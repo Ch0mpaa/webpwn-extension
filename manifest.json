@@ -32,6 +32,10 @@
         "src/lib/siteDetect.js",
         "src/lib/redact.js",
         "src/lib/extractor.js",
+        "src/lib/knowledge.js",
+        "src/lib/personalities.js",
+        "src/lib/engine.js",
+        "src/content/highlighter.js",
         "src/content/content.js"
       ],
       "run_at": "document_idle"
@@ -39,7 +43,7 @@
   ],
   "web_accessible_resources": [
     {
-      "resources": ["src/content/concept-card.css"],
+      "resources": ["src/content/concept-card.css", "src/content/highlight.css"],
       "matches": ["<all_urls>"]
     }
   ]

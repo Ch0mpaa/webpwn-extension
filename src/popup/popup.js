@@ -16,6 +16,10 @@ const state = {
   site: { id: "generic", label: "Generic Web Application", badge: "Generic Mode" },
   llmEnabled: false,
   lastConceptPhrase: "",
+  hlConceptId: null,
+  hlLevel: 1,
+  hlSummary: null,
+  hlPlan: null,
 };
 
 const $ = (s) => document.querySelector(s);
@@ -141,6 +145,7 @@ function render() {
   if (state.mode === "tldr") return renderTLDR();
   if (state.mode === "coach") return renderCoach();
   if (state.mode === "concept") return renderConcept();
+  if (state.mode === "highlight") return renderHighlight();
 }
 
 function renderTLDR() {
@@ -228,6 +233,147 @@ function conceptHtml(d) {
     ${card("Assessment Lens", lensTable(d.lens))}
     ${card("Next observation", `<p class="next">▶ ${esc(d.next)}</p>`)}
   `;
+}
+
+// ---- Highlight Hint mode -----------------------------------------------------
+
+function detectedConcepts() {
+  const found = WPC.detectConcepts(state.clean.bodyText || "", 5).map((f) => f.concept);
+  if (!found.length) found.push(WPC.getConcept("trust-boundary"));
+  return found;
+}
+
+function renderHighlight() {
+  const concepts = detectedConcepts();
+  if (!state.hlConceptId) state.hlConceptId = concepts[0].id;
+  const persona = WPC.getPersona(state.persona);
+  el.personaIntro.textContent = `${persona.icon} ${persona.name} — guided highlighting`;
+
+  const options = concepts
+    .concat(WPC.KNOWLEDGE.filter((c) => !concepts.some((x) => x.id === c.id)))
+    .map((c) => `<option value="${c.id}" ${c.id === state.hlConceptId ? "selected" : ""}>${esc(c.name)}</option>`)
+    .join("");
+
+  const levels = [1, 2, 3]
+    .map((n) => `<button class="lvl-btn ${state.hlLevel === n ? "active" : ""}" data-level="${n}">L${n}</button>`)
+    .join("");
+
+  const legendRows = (WPC.engine.HL_COLORS
+    ? Object.keys(WPC.engine.HL_COLORS)
+    : []
+  )
+    .map((k) => {
+      const c = WPC.engine.HL_COLORS[k];
+      const n = state.hlSummary && state.hlSummary.byColor ? state.hlSummary.byColor[k] || 0 : 0;
+      return `<div class="legend-row"><span class="sw" style="background:${c.hex}"></span>
+        <b>${esc(c.label)}</b><span class="muted">${esc(c.desc)}</span>
+        <span class="legend-count">${state.hlSummary ? n : ""}</span></div>`;
+    })
+    .join("");
+
+  const summary = state.hlSummary;
+  const plan = state.hlPlan;
+
+  el.output.innerHTML = `
+    ${card(
+      "Guided highlighting",
+      `<p class="muted">I mark relevant page elements so you learn to <b>observe</b>. I won't solve the lab — highlights teach where to look.</p>
+       <div class="hl-controls">
+         <label class="hl-lab">Focus concept
+           <select id="hlConcept">${options}</select>
+         </label>
+         <div class="hl-levels">
+           <span class="hl-lab">Hint level</span>
+           <div class="lvl-row">${levels}
+             <button class="lvl-btn strong ${state.hlLevel === 4 ? "active" : ""}" data-level="4" title="Reveals the exact next action">⚠ Strong (L4)</button>
+           </div>
+         </div>
+         <div class="hl-actions">
+           <button id="hlGo" class="primary-btn">✦ Highlight on page</button>
+           <button id="hlClear" class="ghost-btn">Clear highlights</button>
+         </div>
+       </div>`
+    )}
+    ${plan ? card(plan.levelText.split("·")[0].trim() + " · " + esc(plan.conceptName),
+        `<p class="hl-intro">${esc(plan.levelText)}</p><p class="nudge">${esc(plan.intro)}</p>`) : ""}
+    ${summary
+      ? card(
+          `Found ${summary.total} thing(s) to observe`,
+          `<div class="legend">${legendRows}</div>
+           ${storageLine(summary.storage)}`
+        )
+      : card("Legend", `<div class="legend">${legendRows}</div>
+         <p class="muted" style="font-size:11px;margin-top:6px">Counts appear after you highlight.</p>`)}
+    ${plan && plan.lens6 ? card(`Assessment Lens · ${esc(plan.conceptName)}`, lens6Table(plan.lens6)) : ""}
+    ${state.hlLevel < 4
+      ? `<p class="muted" style="font-size:11px">Want the exact next action? Click <b>⚠ Strong (L4)</b> — that's the only level that spells out what to do.</p>`
+      : `<p class="muted" style="font-size:11px">Strong hint active: the concept-relevant marks now name the next action. Everything else stays observation-only.</p>`}
+  `;
+  wireHighlight();
+}
+
+function storageLine(s) {
+  if (!s) return "";
+  if (!s.cookies && !(s.local || []).length && !(s.session || []).length)
+    return `<p class="muted" style="font-size:11px;margin-top:6px">No cookies/storage detected on this page.</p>`;
+  const keys = (s.local || []).concat(s.session || []).slice(0, 8);
+  return `<div class="hl-store">🗝 <b>Trust boundary — storage</b>: ${s.cookies} cookie(s), ${(s.local || []).length} localStorage, ${(s.session || []).length} sessionStorage.
+    ${keys.length ? `<div class="muted" style="font-size:10.5px;margin-top:3px">keys: ${keys.map(esc).join(", ")} <i>(names only — values never read)</i></div>` : ""}</div>`;
+}
+
+function lens6Table(l) {
+  const order = ["WHO", "WHAT", "WHEN", "WHERE", "HOW", "WHY"];
+  return `<table class="lens-tbl">${order
+    .map((k) => `<tr><th>${k}</th><td>${esc(l[k])}</td></tr>`)
+    .join("")}</table>`;
+}
+
+function wireHighlight() {
+  const sel = document.getElementById("hlConcept");
+  sel.addEventListener("change", () => {
+    state.hlConceptId = sel.value;
+    state.hlSummary = null;
+    state.hlPlan = null;
+    renderHighlight();
+  });
+  el.output.querySelectorAll(".lvl-btn").forEach((b) =>
+    b.addEventListener("click", () => {
+      state.hlLevel = parseInt(b.dataset.level, 10);
+      doHighlight();
+    })
+  );
+  document.getElementById("hlGo").addEventListener("click", doHighlight);
+  document.getElementById("hlClear").addEventListener("click", clearHighlight);
+}
+
+async function doHighlight() {
+  const tab = await activeTab();
+  if (!tab) return;
+  el.statusMsg.textContent = "Highlighting…";
+  const resp = await sendToTab(tab.id, {
+    type: "WPC_HIGHLIGHT",
+    conceptId: state.hlConceptId,
+    level: state.hlLevel,
+    persona: state.persona,
+  });
+  if (resp && resp.ok) {
+    state.hlSummary = resp;
+    state.hlPlan = resp.plan;
+    el.statusMsg.textContent = `Marked ${resp.total} element(s) on the page.`;
+  } else {
+    el.statusMsg.textContent = "Couldn't highlight this page.";
+  }
+  renderHighlight();
+}
+
+async function clearHighlight() {
+  const tab = await activeTab();
+  if (!tab) return;
+  await sendToTab(tab.id, { type: "WPC_CLEAR_HIGHLIGHT" });
+  state.hlSummary = null;
+  state.hlPlan = null;
+  el.statusMsg.textContent = "Highlights cleared.";
+  renderHighlight();
 }
 
 // ---- AI enrichment (opt-in) --------------------------------------------------
@@ -352,6 +498,10 @@ async function injectContent(tabId) {
         "src/lib/siteDetect.js",
         "src/lib/redact.js",
         "src/lib/extractor.js",
+        "src/lib/knowledge.js",
+        "src/lib/personalities.js",
+        "src/lib/engine.js",
+        "src/content/highlighter.js",
         "src/content/content.js",
       ],
     });

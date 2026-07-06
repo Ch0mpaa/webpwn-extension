@@ -38,6 +38,24 @@
           return true;
         }
 
+        case "WPC_HIGHLIGHT": {
+          // Guided highlighting: build a plan, then overlay it on the page.
+          const plan = WPC.engine.buildHighlightPlan(msg.phrase || "", {
+            persona: msg.persona,
+            conceptId: msg.conceptId,
+            level: msg.level,
+          });
+          const summary = WPC.highlighter.run(plan);
+          sendResponse(Object.assign({ ok: true, plan: publicPlan(plan) }, summary));
+          return true;
+        }
+
+        case "WPC_CLEAR_HIGHLIGHT": {
+          const r = WPC.highlighter ? WPC.highlighter.clear() : { ok: true };
+          sendResponse(r);
+          return true;
+        }
+
         default:
           return false;
       }
@@ -46,6 +64,20 @@
       return true;
     }
   });
+
+  function publicPlan(p) {
+    return {
+      conceptId: p.conceptId,
+      conceptName: p.conceptName,
+      level: p.level,
+      levelText: p.levelText,
+      intro: p.intro,
+      strongHintAvailable: p.strongHintAvailable,
+      lens6: p.lens6,
+      legend: p.legend,
+      persona: p.persona,
+    };
+  }
 
   function getSelection_() {
     const s = window.getSelection ? String(window.getSelection()) : "";

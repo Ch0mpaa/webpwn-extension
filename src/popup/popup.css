@@ -157,3 +157,43 @@ body {
 
 .hidden { display: none !important; }
 .spin { color: var(--muted); font-size: 12px; }
+
+/* Highlight Hint mode */
+.hl-controls { display: flex; flex-direction: column; gap: 10px; margin-top: 4px; }
+.hl-lab { font-size: 10.5px; text-transform: uppercase; letter-spacing: .4px; color: var(--muted); }
+.hl-controls select {
+  width: 100%; margin-top: 4px; background: var(--bg); border: 1px solid var(--line);
+  color: var(--text); border-radius: 8px; padding: 7px 9px; font-size: 12px;
+}
+.lvl-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.lvl-btn {
+  cursor: pointer; background: var(--panel); border: 1px solid var(--line); color: var(--muted);
+  border-radius: 8px; padding: 6px 12px; font-size: 12px; font-weight: 600; font-family: ui-monospace, monospace;
+}
+.lvl-btn:hover { color: var(--text); border-color: var(--blue); }
+.lvl-btn.active { color: var(--bg); background: var(--blue); border-color: var(--blue); }
+.lvl-btn.strong { color: #ff6ac1; border-color: #6b2a4d; }
+.lvl-btn.strong:hover { border-color: #ff6ac1; }
+.lvl-btn.strong.active { background: #ff6ac1; color: #1a0a12; border-color: #ff6ac1; }
+.hl-actions { display: flex; gap: 8px; margin-top: 4px; }
+.primary-btn {
+  flex: 1; cursor: pointer; background: var(--blue); border: 0; color: #06121f;
+  font-weight: 700; border-radius: 8px; padding: 9px 12px; font-size: 13px;
+}
+.primary-btn:hover { filter: brightness(1.08); }
+.ghost-btn {
+  cursor: pointer; background: transparent; border: 1px solid var(--line); color: var(--muted);
+  border-radius: 8px; padding: 9px 12px; font-size: 12px;
+}
+.ghost-btn:hover { border-color: #ff6b6b; color: #ff6b6b; }
+.hl-intro { margin: 0 0 4px; }
+.legend { display: flex; flex-direction: column; gap: 5px; }
+.legend-row { display: flex; align-items: center; gap: 8px; font-size: 11.5px; }
+.legend-row .sw { width: 12px; height: 12px; border-radius: 3px; flex: none; }
+.legend-row b { min-width: 96px; font-family: ui-monospace, monospace; font-size: 11px; }
+.legend-row .muted { flex: 1; font-size: 10.5px; }
+.legend-count { color: var(--blue); font-family: ui-monospace, monospace; font-weight: 700; min-width: 16px; text-align: right; }
+.hl-store {
+  margin-top: 8px; padding: 8px 10px; border-left: 3px solid var(--purple);
+  background: #17101f; border-radius: 0 8px 8px 0; font-size: 11.5px; color: #e3d3f5;
+}

@@ -199,5 +199,170 @@
     return { conceptId, index, total: c.hints.length, hint: c.hints[index] };
   }
 
-  WPC.engine = { buildTLDR, buildCoach, buildConcept, revealHint, SITE_FRAMES };
+  // ---- Guided Highlighting ---------------------------------------------------
+  // WebPwn theme colors, keyed by semantic meaning. The highlighter maps
+  // element categories onto these.
+  const HL_COLORS = {
+    observe: { hex: "#22d3ee", label: "Observe", desc: "worth a look" },
+    trust: { hex: "#a855f7", label: "Trust boundary", desc: "identity / session / auth" },
+    suspect: { hex: "#ff6ac1", label: "Hypothesis", desc: "suspicious — I'd probe here" },
+    valid: { hex: "#7ee787", label: "Validated", desc: "confirmed behaviour" },
+    danger: { hex: "#ff6b6b", label: "Impact", desc: "sensitive / destructive" },
+    fluff: { hex: "#6b7684", label: "Ignore", desc: "chrome / fluff" },
+  };
+
+  // Teaching text per element category, scaled by hint level (index 0..3).
+  //  L1 point to it · L2 why it matters · L3 what to test · L4 exact next action
+  const CATEGORY_TEACH = {
+    "get-form": [
+      "This form takes input.",
+      "Input that reaches the server is attack surface — where does it end up?",
+      "Trace one field from here to how the response uses it.",
+      "Next: send a benign marker in one field and follow where it surfaces.",
+    ],
+    "state-form": [
+      "This form changes state.",
+      "State-changing requests are where authorization and CSRF defenses must hold.",
+      "Ask what makes this request authorized — anything an attacker couldn't guess?",
+      "Next: capture this submission and replay it with altered fields / from another session.",
+    ],
+    input: [
+      "This input accepts your data.",
+      "Untrusted input is where injection and logic bugs enter.",
+      "Consider what value would change how this is interpreted.",
+      "Next: place one benign probe here and read the response difference.",
+    ],
+    password: [
+      "Credential field — a trust boundary (its value is never read).",
+      "This marks the boundary between anonymous and authenticated.",
+      "Focus on the flow around it: lockout, reset, session issuance.",
+      "Next: watch the post-login session token lifecycle, not the password itself.",
+    ],
+    "object-id": [
+      "Look at this object identifier.",
+      "This names a specific object. Who is meant to own it?",
+      "Compare this id against one from another account you control.",
+      "Next: swap this id for another user's value in a single request and compare the response.",
+    ],
+    link: [
+      "This link navigates or references a route.",
+      "Links reveal the app's structure and privileged areas.",
+      "Inspect the target — does it expose a privileged route?",
+      "Next: request this route directly from a lower-privileged session.",
+    ],
+    button: [
+      "This button performs an action.",
+      "Every action is a workflow step — what does it assume already happened?",
+      "Consider reordering, skipping, or replaying this step.",
+      "Next: trigger this out of the intended sequence and watch server behaviour.",
+    ],
+    "action-button": [
+      "This button performs a sensitive action.",
+      "Sensitive actions must be authorized server-side, not just hidden in the UI.",
+      "Ask: what stops a lower-privileged user from triggering this?",
+      "Next: capture this action and replay it from a low-privilege session.",
+    ],
+    code: [
+      "Visible request / response / code — read it.",
+      "Snippets reveal parameters, ids, and how the server expects input.",
+      "Map the parameters here to inputs you control.",
+      "Next: reproduce this request in a tool that lets you modify one field.",
+    ],
+    "user-context": [
+      "This page reveals the current user.",
+      "Knowing whose context you're in is step one for access-control testing.",
+      "Compare what this user sees vs another account.",
+      "Next: note this identity, then try to reach another user's equivalent object.",
+    ],
+    storage: [
+      "This page uses cookies / storage — a trust boundary.",
+      "Session and identity often live here; flags and scope decide who can read it.",
+      "Check what identifies you and whether it rotates and expires correctly.",
+      "Next: observe the session identifier across login/logout for reuse.",
+    ],
+    fluff: [
+      "Chrome / navigation — ignore this.",
+      "Fluff distracts; consultants filter it out fast.",
+      "Nothing to test here — refocus on functional surface.",
+      "Ignore — not part of the attack surface.",
+    ],
+  };
+
+  const LEVEL_TEXT = {
+    1: "Level 1 · Orientation. I'm pointing at what matters. Just look — no explanations yet.",
+    2: "Level 2 · Why. Each highlight now says why it matters.",
+    3: "Level 3 · What to test. Suggestions only — still no payloads.",
+    4: "Level 4 · Strong hint. The exact next action, because you asked for it.",
+  };
+
+  // Which categories become 'suspect' (pink) depends on the concept's nature.
+  function pinkCategoriesFor(concept) {
+    const tags = (concept && concept.tags) || [];
+    const set = new Set();
+    const has = (t) => tags.includes(t);
+    if (has("access-control") || has("authorization") || has("logic")) {
+      ["object-id", "state-form"].forEach((c) => set.add(c));
+    }
+    if (has("injection")) ["input", "get-form", "code"].forEach((c) => set.add(c));
+    if (has("client-side")) ["input", "link"].forEach((c) => set.add(c));
+    if (has("session") || has("auth")) set.add("storage");
+    return [...set];
+  }
+
+  /**
+   * Build a highlight plan: the concept framing + teaching level, plus the
+   * hints for the on-page overlay. Element FINDING happens in the content-side
+   * highlighter; this only supplies the "what & why", never a payload.
+   */
+  function buildHighlightPlan(input, opts) {
+    opts = opts || {};
+    const persona = WPC.getPersona(opts.persona);
+    const level = Math.min(4, Math.max(1, opts.level || 1));
+    let concept = opts.conceptId ? WPC.getConcept(opts.conceptId) : null;
+    if (!concept && input) concept = WPC.lookupConcept(input);
+    if (!concept) concept = WPC.getConcept("trust-boundary");
+
+    const intro =
+      level >= 4
+        ? persona.question("Strong hint incoming — I'll name the next action, but you still do the thinking.")
+        : persona.nudge();
+
+    return {
+      kind: "highlight-plan",
+      conceptId: concept.id,
+      conceptName: concept.name,
+      level,
+      levelText: LEVEL_TEXT[level],
+      pinkCategories: pinkCategoriesFor(concept),
+      strongHintAvailable: level < 4,
+      persona: { id: persona.id, name: persona.name, icon: persona.icon },
+      intro,
+      // Compact 6-part lens for the highlight panel.
+      lens6: {
+        WHO: concept.lens.who,
+        WHAT: concept.lens.what,
+        WHEN: concept.lens.when,
+        WHERE: concept.lens.where,
+        HOW: concept.lens.howAssessment,
+        WHY: concept.lens.whyVuln,
+      },
+      legend: Object.keys(HL_COLORS).map((k) => ({
+        key: k,
+        hex: HL_COLORS[k].hex,
+        label: HL_COLORS[k].label,
+        desc: HL_COLORS[k].desc,
+      })),
+    };
+  }
+
+  WPC.engine = {
+    buildTLDR,
+    buildCoach,
+    buildConcept,
+    revealHint,
+    buildHighlightPlan,
+    HL_COLORS,
+    CATEGORY_TEACH,
+    SITE_FRAMES,
+  };
 })();
