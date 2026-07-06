@@ -1,0 +1,159 @@
+:root {
+  --bg: #0d1117;
+  --panel: #0f1720;
+  --panel2: #12202e;
+  --line: #1c2c3a;
+  --text: #e6edf3;
+  --muted: #8b98a5;
+  --blue: #58a6ff;
+  --green: #7ee787;
+  --orange: #f0883e;
+  --purple: #d2a8ff;
+  --amber: #ffd7a8;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  width: 400px;
+  max-height: 600px;
+  overflow-y: auto;
+  background: var(--bg);
+  color: var(--text);
+  font: 13px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+.hdr {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 14px; background: linear-gradient(180deg, var(--panel2), var(--panel));
+  border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 5;
+}
+.brand { display: flex; align-items: center; gap: 10px; }
+.logo { color: var(--blue); font-size: 20px; }
+.title { font-weight: 700; letter-spacing: .3px; }
+.tagline { font-size: 10.5px; color: var(--muted); }
+.header-right { display: flex; align-items: center; gap: 8px; }
+.badge {
+  background: #17222e; border: 1px solid #24344a; color: var(--blue);
+  border-radius: 999px; padding: 3px 9px; font-size: 10.5px; white-space: nowrap;
+}
+.icon-btn {
+  background: transparent; border: 1px solid var(--line); color: var(--muted);
+  border-radius: 8px; width: 28px; height: 26px; cursor: pointer; font-size: 14px;
+}
+.icon-btn:hover { color: var(--text); border-color: var(--blue); }
+
+.personas { display: flex; gap: 6px; padding: 10px 14px 4px; }
+.persona {
+  flex: 1; cursor: pointer; background: var(--panel); border: 1px solid var(--line);
+  color: var(--muted); border-radius: 8px; padding: 6px 4px; font-size: 11.5px; font-weight: 600;
+}
+.persona:hover { color: var(--text); }
+.persona.active { color: var(--text); border-color: var(--blue); background: var(--panel2); }
+.persona-intro {
+  margin: 6px 14px 0; font-size: 11.5px; color: var(--amber); font-style: italic; min-height: 14px;
+}
+
+.tabs { display: flex; gap: 4px; padding: 8px 14px 0; }
+.tab {
+  cursor: pointer; background: transparent; border: 0; border-bottom: 2px solid transparent;
+  color: var(--muted); padding: 6px 10px; font-size: 13px; font-weight: 600;
+}
+.tab:hover { color: var(--text); }
+.tab.active { color: var(--blue); border-bottom-color: var(--blue); }
+
+.preview { padding: 8px 14px 0; }
+.preview details {
+  background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px;
+}
+.preview summary {
+  cursor: pointer; display: flex; justify-content: space-between; align-items: center;
+  font-size: 11.5px; user-select: none;
+}
+.preview-body {
+  margin-top: 8px; max-height: 130px; overflow: auto; font-size: 11px;
+  white-space: pre-wrap; word-break: break-word; border-top: 1px solid var(--line); padding-top: 6px;
+}
+.redact-note { font-size: 10.5px; color: var(--green); margin: 6px 0 0; }
+
+.output { padding: 12px 14px 4px; }
+.empty { text-align: center; padding: 24px 6px; }
+.muted { color: var(--muted); }
+
+.card {
+  background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+  padding: 10px 12px; margin-bottom: 10px;
+}
+.card h3 {
+  margin: 0 0 6px; font-size: 11px; text-transform: uppercase; letter-spacing: .5px; color: var(--green);
+}
+.card p { margin: 0 0 6px; }
+.card ul { margin: 4px 0 0; padding-left: 18px; }
+.card li { margin: 3px 0; }
+
+.concept-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+.concept-chip {
+  background: #17222e; border: 1px solid #24344a; border-radius: 999px;
+  padding: 3px 9px; font-size: 11px; color: #9fd0ff; cursor: pointer;
+}
+.concept-chip:hover { border-color: var(--blue); }
+
+.mental {
+  padding: 8px 10px; border-left: 3px solid var(--orange); background: #1a1410;
+  border-radius: 0 8px 8px 0; color: var(--amber); font-style: italic; margin: 4px 0;
+}
+.next { color: var(--blue); font-weight: 600; }
+.nudge { color: var(--purple); font-size: 12px; margin-top: 6px; }
+
+.chain { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; margin-top: 4px; }
+.chain span { background: #14202c; border: 1px solid var(--line); border-radius: 6px; padding: 2px 7px; font-size: 10.5px; }
+.chain .arrow { border: 0; background: transparent; color: var(--muted); padding: 0 1px; }
+
+.lens-tbl { width: 100%; border-collapse: collapse; }
+.lens-tbl th {
+  text-align: left; vertical-align: top; color: var(--muted); font-size: 10px;
+  text-transform: uppercase; letter-spacing: .3px; padding: 3px 8px 3px 0; white-space: nowrap;
+}
+.lens-tbl td { padding: 3px 0; border-bottom: 1px solid #17222e; font-size: 12px; }
+
+.q-list { list-style: none; padding: 0; margin: 0; }
+.q-list li {
+  padding: 8px 10px; margin: 6px 0; background: #12202e; border: 1px solid var(--line);
+  border-radius: 8px; border-left: 3px solid var(--amber);
+}
+.q-concept { font-size: 10px; text-transform: uppercase; letter-spacing: .4px; color: var(--muted); display: block; margin-bottom: 2px; }
+
+.hint-box { margin-top: 8px; }
+.hint-btn {
+  cursor: pointer; background: #1a1410; border: 1px solid #3a2a16; color: var(--amber);
+  border-radius: 8px; padding: 6px 10px; font-size: 11.5px; font-weight: 600;
+}
+.hint-btn:hover { border-color: var(--orange); }
+.hint-out { margin-top: 6px; font-size: 11.5px; color: var(--amber); }
+.hint-out .revealed {
+  padding: 6px 8px; background: #1a1410; border-radius: 6px; margin: 4px 0; border-left: 2px solid var(--orange);
+}
+
+.concept-search { display: flex; gap: 6px; margin-bottom: 10px; }
+.concept-search input {
+  flex: 1; background: var(--panel); border: 1px solid var(--line); color: var(--text);
+  border-radius: 8px; padding: 7px 10px; font-size: 12px;
+}
+.concept-search button {
+  cursor: pointer; background: var(--blue); border: 0; color: #06121f; font-weight: 700;
+  border-radius: 8px; padding: 7px 12px; font-size: 12px;
+}
+
+.foot {
+  display: flex; align-items: center; gap: 10px; padding: 10px 14px;
+  border-top: 1px solid var(--line); position: sticky; bottom: 0; background: var(--panel);
+}
+.ai-btn {
+  cursor: pointer; background: transparent; border: 1px solid var(--purple); color: var(--purple);
+  border-radius: 8px; padding: 6px 12px; font-size: 12px; font-weight: 600;
+}
+.ai-btn:hover { background: #1b1526; }
+.ai-out { border-color: var(--purple); }
+.ai-out h3 { color: var(--purple); }
+.ai-out pre { white-space: pre-wrap; word-break: break-word; margin: 0; font: inherit; }
+
+.hidden { display: none !important; }
+.spin { color: var(--muted); font-size: 12px; }

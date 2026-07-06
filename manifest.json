@@ -1,0 +1,46 @@
+{
+  "manifest_version": 3,
+  "name": "WebPwn Coach",
+  "version": "1.0.0",
+  "description": "An offensive security mentor. Teaches you HOW TO THINK during web app assessments — not an answer bot, not a lab solver.",
+  "permissions": ["activeTab", "scripting", "storage", "contextMenus"],
+  "host_permissions": ["<all_urls>"],
+  "action": {
+    "default_title": "WebPwn Coach",
+    "default_popup": "src/popup/popup.html",
+    "default_icon": {
+      "16": "src/assets/icon16.png",
+      "32": "src/assets/icon32.png",
+      "48": "src/assets/icon48.png",
+      "128": "src/assets/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "src/assets/icon16.png",
+    "32": "src/assets/icon32.png",
+    "48": "src/assets/icon48.png",
+    "128": "src/assets/icon128.png"
+  },
+  "background": {
+    "service_worker": "src/background/background.js"
+  },
+  "options_page": "src/options/options.html",
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": [
+        "src/lib/siteDetect.js",
+        "src/lib/redact.js",
+        "src/lib/extractor.js",
+        "src/content/content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["src/content/concept-card.css"],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}

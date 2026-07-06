@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>WebPwn Coach — Settings</title>
+    <link rel="stylesheet" href="options.css" />
+  </head>
+  <body>
+    <div class="wrap">
+      <header>
+        <span class="logo">◆</span>
+        <div>
+          <h1>WebPwn Coach</h1>
+          <p class="sub">Settings — teach mentality, not payloads.</p>
+        </div>
+      </header>
+
+      <section class="panel">
+        <h2>Mentor personality</h2>
+        <p class="muted">Changes tone and framing only — never the substance, never spoilers.</p>
+        <div class="radio-row" id="personaRow">
+          <label><input type="radio" name="persona" value="atlas" /> 🛰️ <b>ATLAS</b> — professional, methodical</label>
+          <label><input type="radio" name="persona" value="bit" /> 🐣 <b>BIT</b> — beginner, curious, funny</label>
+          <label><input type="radio" name="persona" value="byte" /> 🧠 <b>BYTE</b> — senior, dry humor, pushes you</label>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Optional AI backend <span class="pill">bring your own key</span></h2>
+        <p class="muted">
+          The extension works fully offline using its built-in knowledge base. Enable this only if you
+          want richer, page-specific coaching. Your key is stored locally in this browser and is sent
+          <b>only</b> to the provider you choose. The page context is <b>redacted</b> (secrets stripped)
+          and you can always preview exactly what would be sent before sending.
+        </p>
+
+        <label class="switch">
+          <input type="checkbox" id="llmEnabled" />
+          <span>Enable AI mentor enrichment</span>
+        </label>
+
+        <div id="llmFields" class="fields">
+          <label>Provider
+            <select id="provider">
+              <option value="anthropic">Anthropic (Claude)</option>
+              <option value="openai">OpenAI-compatible</option>
+            </select>
+          </label>
+          <label>API key
+            <input id="apiKey" type="password" placeholder="sk-… / your key" autocomplete="off" />
+          </label>
+          <label>Model
+            <input id="model" type="text" placeholder="claude-sonnet-5 / gpt-4o-mini" />
+          </label>
+          <label>Base URL <span class="muted">(optional override)</span>
+            <input id="baseUrl" type="text" placeholder="https://api.anthropic.com" />
+          </label>
+        </div>
+      </section>
+
+      <div class="actions">
+        <button id="save" class="primary">Save settings</button>
+        <span id="status" class="status"></span>
+      </div>
+
+      <section class="panel note">
+        <h2>Privacy &amp; ethics</h2>
+        <ul>
+          <li>Passwords and secret-like values are never collected or sent.</li>
+          <li>Nothing leaves your browser unless you explicitly enable the AI backend.</li>
+          <li>This is a learning mentor for <b>authorized</b> testing, CTFs, and training labs only.</li>
+        </ul>
+      </section>
+    </div>
+    <script src="options.js"></script>
+  </body>
+</html>

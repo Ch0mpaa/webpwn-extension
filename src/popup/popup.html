@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>WebPwn Coach</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <header class="hdr">
+      <div class="brand">
+        <span class="logo">◆</span>
+        <div>
+          <div class="title">WebPwn Coach</div>
+          <div class="tagline">Teach mentality, not payloads.</div>
+        </div>
+      </div>
+      <div class="header-right">
+        <span id="siteBadge" class="badge">detecting…</span>
+        <button id="optsBtn" class="icon-btn" title="Settings">⚙</button>
+      </div>
+    </header>
+
+    <nav class="personas" id="personaRow">
+      <button class="persona" data-persona="atlas">🛰️ ATLAS</button>
+      <button class="persona" data-persona="bit">🐣 BIT</button>
+      <button class="persona" data-persona="byte">🧠 BYTE</button>
+    </nav>
+    <p id="personaIntro" class="persona-intro"></p>
+
+    <div class="tabs" id="tabs">
+      <button class="tab active" data-mode="tldr">TL;DR</button>
+      <button class="tab" data-mode="coach">Coach</button>
+      <button class="tab" data-mode="concept">Concept</button>
+    </div>
+
+    <section class="preview">
+      <details id="previewBox">
+        <summary>
+          <span>👁 Preview what I read</span>
+          <span id="previewMeta" class="muted"></span>
+        </summary>
+        <div id="previewBody" class="preview-body muted">Reading the page…</div>
+        <p class="redact-note" id="redactNote"></p>
+      </details>
+    </section>
+
+    <main id="output" class="output">
+      <div class="empty" id="emptyState">
+        <p>Pick a mode above. I read the page, ignore the fluff, and help you think.</p>
+        <p class="muted">Nothing leaves your browser unless you enable the optional AI backend in settings.</p>
+      </div>
+    </main>
+
+    <footer class="foot">
+      <button id="aiBtn" class="ai-btn hidden">✦ Enrich with AI</button>
+      <span id="statusMsg" class="muted"></span>
+    </footer>
+
+    <!-- Shared engine (classic scripts populate globalThis.WPC) -->
+    <script src="../lib/siteDetect.js"></script>
+    <script src="../lib/redact.js"></script>
+    <script src="../lib/knowledge.js"></script>
+    <script src="../lib/personalities.js"></script>
+    <script src="../lib/engine.js"></script>
+    <script src="popup.js"></script>
+  </body>
+</html>
