@@ -238,7 +238,7 @@ async function summarizeWithAI() {
   try {
     const resp = await chrome.runtime.sendMessage(Object.assign(
       { type: "WPC_LLM", mode: "tldr", context: state.clean }, await llmMeta()));
-    out.innerHTML = `<div class="card ai-out"><h3>✦ ATLAS — this page</h3><pre class="pre">${esc(aiText(resp))}</pre></div>`;
+    out.innerHTML = `<div class="card ai-out"><h3>✦ ATLAS — this page</h3><div class="md">${aiHtml(resp)}</div></div>`;
   } catch (e) { out.innerHTML = `<div class="card ai-out"><h3>✦ ATLAS</h3><p class="muted">${esc(e.message)}</p></div>`; }
 }
 
@@ -253,7 +253,7 @@ async function explainSelection() {
   try {
     const resp = await chrome.runtime.sendMessage(Object.assign(
       { type: "WPC_LLM", mode: "concept", phrase: text, context: state.clean || {} }, await llmMeta()));
-    out.innerHTML = `<div class="card ai-out"><h3>✦ ATLAS explains</h3><p class="muted small">“${esc(text.slice(0, 120))}${text.length > 120 ? "…" : ""}”</p><pre class="pre">${esc(aiText(resp))}</pre></div>`;
+    out.innerHTML = `<div class="card ai-out"><h3>✦ ATLAS explains</h3><p class="muted small">“${esc(text.slice(0, 120))}${text.length > 120 ? "…" : ""}”</p><div class="md">${aiHtml(resp)}</div></div>`;
   } catch (e) { out.innerHTML = `<div class="card"><p class="muted">${esc(e.message)}</p></div>`; }
 }
 
@@ -556,7 +556,7 @@ async function analyzeRequest(p, sel) {
         question: `Walk me through this captured request as my mentor. Method ${p.request.method} ${p.request.path}${p.request.query || ""}, status ${p.response ? p.response.status : "?"}. Cover: parameters, cookies/auth presence, object IDs, status meaning, response differences to look for, the trust boundary, and the single likely next test. Ask me questions; don't hand me the exploit.`,
         context: state.clean || {} },
       await llmMeta()));
-    out.innerHTML = card("✦ ATLAS analysis", `<pre class="pre">${esc(aiText(resp))}</pre>`);
+    out.innerHTML = card("✦ ATLAS analysis", `<div class="md">${aiHtml(resp)}</div>`);
     if (sel) sel.analyzed = true;
   } catch (e) { out.innerHTML = card("✦ ATLAS analysis", `<p class="muted">${esc(e.message)}</p>`); }
 }
@@ -660,7 +660,7 @@ async function renderReps() {
 function renderAsk() {
   const msgs = state.chat.map((m) => m.role === "user"
     ? `<div class="msg user">${esc(m.text)}</div>`
-    : `<div class="msg coach"><pre>${esc(m.text)}</pre></div>`).join("");
+    : `<div class="msg coach">${renderMarkdown(m.text)}</div>`).join("");
   el.output.innerHTML = `
     <div class="card"><h3>Ask Coach</h3><p class="muted small">I guide with questions, not answers. Paste a snippet and I'll explain it. Ask for a "strong hint" only if you really want the next action.</p></div>
     <div class="chat" id="chat">${msgs || `<div class="msg coach"><pre>What are you looking at? Describe the page, or paste a request/JWT/JSON/SQL and I'll help you think.</pre></div>`}</div>
@@ -858,7 +858,7 @@ async function enrichAI() {
     const resp = await chrome.runtime.sendMessage(Object.assign(
       { type: "WPC_LLM", mode: state.mode === "traffic" ? "tldr" : state.mode, context: state.clean },
       await llmMeta()));
-    box.innerHTML = `<h3>✦ AI Mentor</h3><pre class="pre">${esc(aiText(resp, "failed"))}</pre>`;
+    box.innerHTML = `<h3>✦ AI Mentor</h3><div class="md">${aiHtml(resp, "failed")}</div>`;
   } catch (e) { box.innerHTML = `<h3>✦ AI Mentor</h3><p class="muted">${esc(e.message)}</p>`; }
   el.statusMsg.textContent = "";
 }
@@ -906,4 +906,54 @@ function cleanAI(t) {
 }
 function aiText(resp, fallback) {
   return resp && resp.ok ? (cleanAI(resp.text) || "(empty response)") : ((resp && resp.error) || fallback || "AI unavailable");
+}
+function aiHtml(resp, fallback) {
+  if (resp && resp.ok) return renderMarkdown(cleanAI(resp.text) || "(empty response)");
+  return `<p class="muted">${esc((resp && resp.error) || fallback || "AI unavailable")}</p>`;
+}
+
+// Small, dependency-free, XSS-safe Markdown renderer for AI output.
+function renderMarkdown(src) {
+  src = String(src == null ? "" : src);
+  const e = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const blocks = [];
+  src = src.replace(/```(\w*)\n?([\s\S]*?)```/g, (m, lang, code) => {
+    blocks.push(`<pre class="md-code">${e(code.replace(/\n$/, ""))}</pre>`);
+    return ` B${blocks.length - 1} `;
+  });
+  const safeUrl = (u) => (/^https?:\/\//i.test(u) ? u : "#");
+  const inline = (t) => {
+    t = e(t);
+    t = t.replace(/`([^`]+)`/g, '<code class="md-ic">$1</code>');
+    t = t.replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>");
+    t = t.replace(/(^|[^*])\*([^*\n]+)\*/g, "$1<i>$2</i>");
+    t = t.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (m, txt, url) => `<a href="${e(safeUrl(url))}" target="_blank" rel="noopener noreferrer">${txt}</a>`);
+    return t;
+  };
+  const lines = src.split(/\r?\n/);
+  let html = "", i = 0;
+  const isBlockStart = (l) => /^(#{1,6}\s|\s*[-*+]\s|\s*\d+\.\s|\s*>|\s*\|)/.test(l) || /^ B\d+ $/.test(l);
+  while (i < lines.length) {
+    const line = lines[i];
+    const bm = line.match(/^ B(\d+) $/);
+    if (bm) { html += blocks[+bm[1]]; i++; continue; }
+    if (/^\s*\|(.+)\|\s*$/.test(line) && i + 1 < lines.length && /^\s*\|?[\s:|-]*-[\s:|-]*\|?\s*$/.test(lines[i + 1])) {
+      const headers = line.split("|").slice(1, -1).map((c) => c.trim());
+      i += 2; const rows = [];
+      while (i < lines.length && /^\s*\|(.+)\|\s*$/.test(lines[i])) { rows.push(lines[i].split("|").slice(1, -1).map((c) => c.trim())); i++; }
+      html += `<table class="md-tbl"><thead><tr>${headers.map((h) => `<th>${inline(h)}</th>`).join("")}</tr></thead><tbody>${rows.map((r) => `<tr>${r.map((c) => `<td>${inline(c)}</td>`).join("")}</tr>`).join("")}</tbody></table>`;
+      continue;
+    }
+    const hm = line.match(/^(#{1,6})\s+(.*)$/);
+    if (hm) { const lvl = Math.min(6, hm[1].length); html += `<div class="md-h md-h${lvl}">${inline(hm[2])}</div>`; i++; continue; }
+    if (/^\s*(---|\*\*\*|___)\s*$/.test(line)) { html += `<hr class="md-hr">`; i++; continue; }
+    if (/^\s*>\s?/.test(line)) { const q = []; while (i < lines.length && /^\s*>\s?/.test(lines[i])) { q.push(lines[i].replace(/^\s*>\s?/, "")); i++; } html += `<blockquote class="md-q">${inline(q.join(" "))}</blockquote>`; continue; }
+    if (/^\s*[-*+]\s+/.test(line)) { const it = []; while (i < lines.length && /^\s*[-*+]\s+/.test(lines[i])) { it.push(lines[i].replace(/^\s*[-*+]\s+/, "")); i++; } html += `<ul class="md-ul">${it.map((x) => `<li>${inline(x)}</li>`).join("")}</ul>`; continue; }
+    if (/^\s*\d+\.\s+/.test(line)) { const it = []; while (i < lines.length && /^\s*\d+\.\s+/.test(lines[i])) { it.push(lines[i].replace(/^\s*\d+\.\s+/, "")); i++; } html += `<ol class="md-ol">${it.map((x) => `<li>${inline(x)}</li>`).join("")}</ol>`; continue; }
+    if (/^\s*$/.test(line)) { i++; continue; }
+    const para = [line]; i++;
+    while (i < lines.length && !/^\s*$/.test(lines[i]) && !isBlockStart(lines[i])) { para.push(lines[i]); i++; }
+    html += `<p class="md-p">${inline(para.join(" "))}</p>`;
+  }
+  return html;
 }
