@@ -17,6 +17,11 @@ chrome.runtime.onInstalled.addListener(() => {
   });
 });
 
+// Clicking the toolbar icon opens the side panel (the primary UI).
+if (chrome.sidePanel && chrome.sidePanel.setPanelBehavior) {
+  chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {});
+}
+
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   if (info.menuItemId !== MENU_ID || !tab || !tab.id) return;
   const { persona } = await chrome.storage.local.get("persona");
@@ -82,6 +87,9 @@ function buildUserPrompt(msg) {
 }
 
 function modeInstruction(mode, msg) {
+  if (mode === "chat") {
+    return `The learner asks: "${msg.question || ""}". Respond as a mentor — guide with questions and mental models, do not hand over the answer or a payload unless they explicitly ask for a strong hint.`;
+  }
   if (mode === "concept") {
     return `Explain the concept "${msg.phrase || ""}" as a mentor: simple explanation, real-world example, how to identify, what to test, common mistakes, a mental model, and 2-3 coaching questions. No spoilers.`;
   }

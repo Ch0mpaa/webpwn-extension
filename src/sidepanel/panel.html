@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>WebPwn Coach</title>
+    <link rel="stylesheet" href="panel.css" />
+  </head>
+  <body>
+    <header class="hdr">
+      <div class="brand">
+        <span class="logo">◆</span>
+        <div>
+          <div class="title">WebPwn Coach</div>
+          <div class="tagline">Think like a consultant.</div>
+        </div>
+      </div>
+      <div class="header-right">
+        <span id="siteBadge" class="badge">…</span>
+        <button id="refreshBtn" class="icon-btn" title="Re-scan page">⟳</button>
+      </div>
+    </header>
+
+    <nav class="personas" id="personaRow">
+      <button class="persona" data-persona="atlas">🛰️ ATLAS</button>
+      <button class="persona" data-persona="bit">🐣 BIT</button>
+      <button class="persona" data-persona="byte">🧠 BYTE</button>
+    </nav>
+    <p id="personaIntro" class="persona-intro"></p>
+
+    <div class="tabs" id="tabs">
+      <button class="tab active" data-mode="tldr">TL;DR</button>
+      <button class="tab" data-mode="lens">Lens</button>
+      <button class="tab" data-mode="elements">Elements</button>
+      <button class="tab" data-mode="traffic">Traffic</button>
+      <button class="tab" data-mode="highlight">Highlight</button>
+      <button class="tab" data-mode="memory">Memory</button>
+      <button class="tab" data-mode="reps">Reps</button>
+      <button class="tab" data-mode="ask">Ask</button>
+      <button class="tab" data-mode="proxy">Proxy</button>
+      <button class="tab" data-mode="settings">Settings</button>
+    </div>
+
+    <main id="output" class="output"></main>
+
+    <footer class="foot">
+      <button id="aiBtn" class="ai-btn hidden">✦ AI</button>
+      <span id="statusMsg" class="muted"></span>
+    </footer>
+
+    <script src="../lib/siteDetect.js"></script>
+    <script src="../lib/redact.js"></script>
+    <script src="../lib/knowledge.js"></script>
+    <script src="../lib/personalities.js"></script>
+    <script src="../lib/engine.js"></script>
+    <script src="../lib/httpparse.js"></script>
+    <script src="../lib/explain.js"></script>
+    <script src="../lib/memory.js"></script>
+    <script src="panel.js"></script>
+  </body>
+</html>

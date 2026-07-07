@@ -7,7 +7,16 @@ When you open a learning page it reads the content, ignores the fluff, extracts 
 important concepts, and coaches you on *why it matters* and *how a consultant thinks*.
 
 Works on **PortSwigger Academy · Hack The Box Academy · OWASP Juice Shop · WebPwn ·
-DVWA · generic web apps**.
+DVWA · QuickWash · generic web apps**.
+
+The methodology it teaches:
+
+> **Mission → Business → Users → Objects → Workflows → Trust Boundaries →
+> Assessment Lens → Tool Choice → Validate → Evidence → Report → Interview → Debrief**
+
+and the full **Assessment Lens**: WHO · WHAT · WHEN · WHERE · HOW (assessment) ·
+HOW (technical) · WHY vulnerable · WHY worked · WHY failed · VALIDATE · FIX · REPORT ·
+INTERVIEW · **DEBRIEF**.
 
 ---
 
@@ -16,9 +25,82 @@ DVWA · generic web apps**.
 1. Open `chrome://extensions`.
 2. Toggle **Developer mode** (top right).
 3. Click **Load unpacked** and select the `webpwn-coach-extension/` folder.
-4. Pin the ◆ WebPwn Coach icon and open any learning page.
+4. Pin the ◆ WebPwn Coach icon. **Click it to open the side panel** (the main UI).
 
 No build step. No dependencies. Pure vanilla JS (Manifest V3).
+
+The optional **companion proxy** and **AI backend** are separate opt-ins (below).
+
+---
+
+## The side panel (primary UI)
+
+Clicking the toolbar icon opens a side panel with these tabs:
+
+| Panel | What it does |
+|---|---|
+| **TL;DR** | Fluff-free brief: summary, why it matters, Assessment Lens, mental model, beginner vs senior view, next observation, and the full methodology chain. |
+| **Lens** | Pick any concept → its full 14-part Assessment Lens (incl. DEBRIEF) + coaching questions. |
+| **Elements** | What's visible: forms, buttons, links, code snippets, cookie/storage **key names**, and the likely **trust boundaries** — with "observe first / ignore as fluff". |
+| **Traffic** | Import & understand HTTP (see below). |
+| **Highlight** | Guided page highlighting (see below). |
+| **Memory** | Your skill profile and weakness tracking (see below). |
+| **Reps** | Recommended practice for your weak areas. |
+| **Ask** | Ask Coach — a Socratic chat that guides, explains pasted snippets, and never spoils. |
+| **Proxy** | Toggle the browser proxy and drive the companion (see below). |
+| **Settings** | Persona, context toggles, companion URL, links to AI options. |
+
+### Traffic — import & understand HTTP
+Three ways to get traffic, all explained through the Assessment Lens:
+
+- **Paste** a raw HTTP request/response (from Burp/Caido) — or a **JWT / JSON / SQL /
+  JS / PHP / Java / Python / Node** snippet — and click **Explain**.
+- **Import a HAR** file (browser DevTools → Network → Export HAR).
+- **Load from the companion proxy** (Proxy tab must be running).
+
+Select a request, then: **Explain Request · Map to Assessment Lens · Identify
+Users/Objects · Suggest Next Test · Create Evidence** (a copy-ready evidence template).
+
+The **code/artifact explainer** teaches, per snippet: what language/format it is, what it
+does, the security concept, why it matters, what a beginner should recognise next time,
+and the vulnerability family. JWTs are decoded (header/payload/claims/alg/expiry); JSON is
+scanned for id/ownership and role fields; SQL for injection surface; server code for
+routes and missing auth checks; client JS for the validation trust boundary.
+
+### Memory & Reps — weakness tracking
+Locally (nothing leaves the browser) the extension tracks concepts encountered, hints
+requested, mistakes, reports written, and interview answers missed, and builds a **skill
+profile** across 19 families (Authentication, Authorization, Business Logic, SQLi, XSS,
+CSRF, File Upload, Path Traversal, Command Injection, SSRF, XXE, GraphQL, JWT, OAuth,
+NoSQL, Race Conditions, Deserialization, Request Smuggling, Cache Poisoning). Weak skills
+surface **recommended reps** across PortSwigger, HTB Academy, Juice Shop, DVWA, WebPwn,
+and QuickWash — with *why* you struggled and the likely missing prerequisite.
+
+---
+
+## Companion proxy & Proxy Mode (optional)
+
+A tiny local **study proxy** removes the need for FoxyProxy while learning. It is **not**
+a Burp replacement and never intercepts/modifies requests.
+
+```bash
+cd companion
+node proxy.js                 # 127.0.0.1:8088
+BURP_UPSTREAM=http://127.0.0.1:8080 node proxy.js   # forward to Burp/Caido
+```
+
+In the **Proxy** panel: **Proxy ON → WebPwn Coach (8088)**, **ON → Burp (8080)**, or
+**Proxy OFF** (restores system settings). A warning shows whenever a proxy is active. The
+panel also shows companion health and a **pause capture** button, and links to the Traffic
+tab to browse captured requests.
+
+The companion captures **only allowlisted study domains** (webpwn.me, portswigger /
+web-security-academy.net, hackthebox.com, owasp.org, localhost, 127.0.0.1, juice-shop) and
+**redacts** `Authorization`, `Cookie`, `Set-Cookie`, `X-API-Key`, JWTs, and `password=`
+fields before storing. **HTTPS**: the MVP records HTTP fully; HTTPS `CONNECT` is tunneled
+and only its metadata is recorded (full bodies need a local CA cert — see
+`companion/README.md`, or use Burp as the upstream). See `companion/README.md` for the
+local API (`/health`, `/traffic`, `/traffic/:id`, `DELETE /traffic`, `/pause`).
 
 ---
 
@@ -131,14 +213,20 @@ This is a learning tool for **authorized** testing, CTFs, and training labs only
 ```
 webpwn-coach-extension/
 ├── manifest.json
+├── companion/                       # local study proxy (Node, no deps)
+│   ├── proxy.js                     # 127.0.0.1:8088 forward proxy + local API
+│   ├── package.json
+│   └── README.md
 ├── src/
-│   ├── background/background.js     # context menu + optional LLM proxy
+│   ├── background/background.js     # context menu + side-panel behavior + LLM proxy
 │   ├── content/
-│   │   ├── content.js               # page read + in-page concept card + msg routing
+│   │   ├── content.js               # page read + concept card + highlight/storage routing
 │   │   ├── concept-card.css
 │   │   ├── highlighter.js           # guided-highlight DOM scanner + overlay
 │   │   └── highlight.css
-│   ├── popup/                       # main UI (TL;DR / Coach / Concept)
+│   ├── sidepanel/                   # PRIMARY UI (10 panels)
+│   │   ├── panel.html · panel.css · panel.js
+│   ├── popup/                       # legacy quick-view (TL;DR / Coach / Concept)
 │   ├── options/                     # settings + AI config
 │   ├── lib/
 │   │   ├── siteDetect.js            # platform detection (the "modes")
@@ -146,10 +234,14 @@ webpwn-coach-extension/
 │   │   ├── redact.js                # strip secrets before send
 │   │   ├── knowledge.js             # curated concept + Assessment Lens library
 │   │   ├── personalities.js         # ATLAS / BIT / BYTE
-│   │   └── engine.js                # TL;DR / Coach / Concept output + highlight plans
+│   │   ├── engine.js                # TL;DR / Coach / Concept output + highlight plans
+│   │   ├── httpparse.js             # raw HTTP + HAR parsing (Traffic)
+│   │   ├── explain.js               # code/artifact explainer + traffic→lens
+│   │   └── memory.js                # weakness tracking + skill profile + reps
 │   └── assets/                      # icons
 └── tools/gen-icons.mjs              # regenerate PNG icons
 ```
 
 The `lib/*` files are plain scripts that attach to a shared `globalThis.WPC`
-namespace, so the **exact same engine** runs in both the content script and the popup.
+namespace, so the **exact same engine** runs in the content script, the side panel, and
+the popup. The companion proxy is a standalone Node service (see `companion/README.md`).

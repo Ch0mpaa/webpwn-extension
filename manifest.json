@@ -3,11 +3,13 @@
   "name": "WebPwn Coach",
   "version": "1.0.0",
   "description": "An offensive security mentor. Teaches you HOW TO THINK during web app assessments — not an answer bot, not a lab solver.",
-  "permissions": ["activeTab", "scripting", "storage", "contextMenus"],
+  "permissions": ["activeTab", "scripting", "storage", "contextMenus", "sidePanel", "proxy"],
   "host_permissions": ["<all_urls>"],
+  "side_panel": {
+    "default_path": "src/sidepanel/panel.html"
+  },
   "action": {
-    "default_title": "WebPwn Coach",
-    "default_popup": "src/popup/popup.html",
+    "default_title": "WebPwn Coach (opens side panel)",
     "default_icon": {
       "16": "src/assets/icon16.png",
       "32": "src/assets/icon32.png",

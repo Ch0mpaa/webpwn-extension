@@ -1,0 +1,12 @@
+{
+  "name": "webpwn-coach-proxy",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Local study proxy companion for the WebPwn Coach extension (not a Burp replacement).",
+  "bin": { "webpwn-coach-proxy": "proxy.js" },
+  "scripts": {
+    "start": "node proxy.js",
+    "start:burp": "BURP_UPSTREAM=http://127.0.0.1:8080 node proxy.js"
+  },
+  "engines": { "node": ">=18" }
+}

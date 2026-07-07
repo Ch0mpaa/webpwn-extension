@@ -56,6 +56,13 @@
           return true;
         }
 
+        case "WPC_STORAGE": {
+          // Cookie/localStorage/sessionStorage key names only — never values.
+          const s = WPC.highlighter ? WPC.highlighter.storageIndicator() : { cookies: 0, local: [], session: [] };
+          sendResponse({ ok: true, storage: s });
+          return true;
+        }
+
         default:
           return false;
       }

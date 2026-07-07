@@ -136,6 +136,70 @@ storage indicator reports names only; `clear()` removes every overlay and the ba
 
 ---
 
+## MVP expansion — side panel, Traffic, Memory, Proxy
+
+### Side panel is now the primary UI
+`manifest.action` no longer sets `default_popup`; instead `background.js` calls
+`chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true })` and the manifest
+declares `side_panel.default_path`. The popup files remain (still functional) but the
+toolbar click opens `src/sidepanel/panel.html`. The panel loads the same `WPC.*` libs via
+`<script>` tags and adds three new ones: `httpparse`, `explain`, `memory`.
+
+New permissions: `sidePanel`, `proxy`.
+
+### New shared libs
+- **`httpparse.js`** — `parseText` (raw HTTP request/response paste), `parseHar` (HAR
+  export → endpoint summary), `extractParams`. Redacts `Authorization/Cookie/Set-Cookie/
+  X-API-Key`/JWTs and masks `password=` on the way in.
+- **`explain.js`** — `classify` + `explainArtifact` for JWT / JSON / SQL / SQL-error /
+  PHP / Java / Python / Node / client-JS / raw HTTP, each returning the 6 teaching points
+  (format, what-it-does, concept link, why, beginner-next, vuln family). Plus
+  `trafficLens` (parsed request → full 14-part lens incl. DEBRIEF), `identifyUsersObjects`,
+  and a copy-ready evidence template. JWT detection is deliberately lenient on the
+  signature so `alg=none` tokens still decode.
+- **`memory.js`** — `record` / `profile` / `recommend`. Persists to
+  `chrome.storage.local` under `wpc_memory` (falls back to an in-memory object under test).
+  Maps 23 knowledge concepts → 19 skill families, scores each skill
+  (`strength = seen + 2·reports`, `struggle = hints + 2·mistakes + 2·missed`), assigns a
+  level (New/Weak/Practicing/Solid), and recommends reps for the weakest touched skills
+  with a "why" and a prerequisite.
+
+### Traffic data flow
+```
+paste / HAR / companion  →  WPC.http.parse*  →  parsed {request,response}
+   selected request  →  actions:
+     Explain Request         (params, id flags, auth/cookie presence)
+     Map to Assessment Lens  (WPC.explain.trafficLens)
+     Identify Users/Objects  (WPC.explain.identifyUsersObjects)
+     Suggest Next Test       (concept coach questions — logs a hint)
+     Create Evidence         (markdown template — logs a report)
+```
+
+### Companion proxy (`companion/proxy.js`)
+A dependency-free Node forward proxy on `127.0.0.1:8088`. One server multiplexes:
+- **absolute-URL requests** → forward (optionally via `BURP_UPSTREAM`), capture
+  metadata + redacted body previews, store only for allowlisted study domains;
+- **`CONNECT`** → metadata-only TCP tunnel (no TLS interception in MVP);
+- **path requests** → the local API (`/health`, `/traffic`, `/traffic/:id`,
+  `DELETE /traffic`, `/pause`) with open CORS (loopback-only dev).
+
+The extension's proxy toggle uses a **PAC script** (not `fixed_servers`) so it can force
+`DIRECT` for `127.0.0.1:8088` — otherwise routing all traffic through the companion would
+loop the API calls back through itself. `Proxy OFF` calls `chrome.proxy.settings.clear`,
+restoring the system proxy.
+
+### Verification for the MVP
+- `httpparse` / `explain` / `memory` unit-tested in a Node VM sandbox (parse + redaction,
+  JWT/JSON/SQL/code classification, traffic lens + DEBRIEF, skill scoring + recommend).
+- Companion proxy tested for real in-process: a proxied POST is captured with correct
+  metadata and `Authorization`/`password`/`Set-Cookie` redacted.
+- Side panel loaded as an extension page in headless Chromium: all 10 tabs render, the
+  Traffic JWT/HTTP explain + actions work, Ask Coach replies, Memory logs + Reps
+  recommend, and the Proxy panel reads `chrome.proxy` status. With the companion running,
+  the panel's health check and `chrome.proxy` set/get/clear were confirmed.
+
+---
+
 ## Known limitations
 
 1. **Heuristic, not semantic.** Element categorisation and object-id detection are
@@ -162,3 +226,33 @@ storage indicator reports names only; `clear()` removes every overlay and the ba
 10. **Green (Validated) is reserved.** The palette includes a "validated" green, but the
     tool doesn't auto-confirm findings, so nothing is coloured green automatically today —
     it's reserved for a future "mark as validated" interaction.
+
+### MVP limitations (Traffic / Memory / Proxy)
+
+11. **HTTPS bodies are not visible.** The companion does not do TLS interception. `CONNECT`
+    is tunneled and only metadata (host:port) is recorded. Full HTTPS bodies require a
+    local CA certificate (out of scope for the MVP) or using Burp/Caido as the upstream.
+12. **Companion stores in memory only.** Captured traffic is a 200-entry ring buffer in the
+    proxy process — it is lost on restart. No disk persistence yet.
+13. **Proxy is browser-wide.** `chrome.proxy` affects the whole browser profile, not just
+    study tabs. A warning is shown while active; remember to turn it OFF. If the extension
+    is removed while the proxy is on, Chrome restores settings on uninstall, but a crash
+    mid-session could leave the PAC set — toggle OFF or restart Chrome to clear.
+14. **Heuristic explainer & parsing.** Language/artifact classification and HTTP parsing
+    are best-effort. Malformed pastes, unusual header casing, or mixed request+response
+    blobs may parse partially. Paste a clean boundary (just the JWT, just the JSON, or a
+    complete request block) for best results.
+15. **Memory is local & signal-light.** Weakness tracking lives in `chrome.storage.local`
+    (this profile only — no sync, no export yet). Automatic events are limited
+    (concept-encountered on TL;DR, hint on strong highlight / next-test / chat strong
+    hint); mistakes, missed interview answers and reports are mostly logged manually in the
+    Memory panel. The skill score is a simple heuristic, not a calibrated assessment.
+16. **Reps catalog is curated, not linked.** Recommended reps name the platform + module/
+    challenge but don't deep-link (lab URLs change). They're pointers to go practice.
+17. **Ask Coach (offline) is shallow.** Without the AI backend, chat replies are
+    knowledge-base driven (classify a pasted artifact, or detect a concept and return its
+    mental model + coaching questions). It won't hold a long dialogue; enable the AI
+    backend for richer conversation.
+18. **Allowlist is host-based.** The companion allowlist matches on host suffix; a study
+    lab on an unlisted host won't be captured until you add it to `ALLOWLIST` in
+    `companion/proxy.js`.
