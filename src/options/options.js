@@ -1,5 +1,5 @@
 /* WebPwn Coach — Options controller */
-const KEYS = ["persona", "llmEnabled", "provider", "apiKey", "model", "baseUrl"];
+const KEYS = ["persona", "llmEnabled", "provider", "apiKey", "model", "baseUrl", "modelSummarize", "modelCoach"];
 
 const $ = (s) => document.querySelector(s);
 const els = {
@@ -9,6 +9,8 @@ const els = {
   apiKey: $("#apiKey"),
   model: $("#model"),
   baseUrl: $("#baseUrl"),
+  modelSummarize: $("#modelSummarize"),
+  modelCoach: $("#modelCoach"),
   save: $("#save"),
   status: $("#status"),
   hint: $("#providerHint"),
@@ -19,7 +21,7 @@ const PROVIDERS = {
     key: "sk-or-v1-… (from openrouter.ai/keys)",
     model: "anthropic/claude-3.5-sonnet",
     base: "https://openrouter.ai/api/v1",
-    hint: "OpenRouter: create a key at openrouter.ai/keys, then set a model like anthropic/claude-3.5-sonnet, openai/gpt-4o, or any model id from openrouter.ai/models. Base URL is optional — it defaults correctly.",
+    hint: "OpenRouter: key from openrouter.ai/keys. Pick per-task models — Summarize uses a cheap/:free model (append :free for free variants, or use openrouter/auto), Coach uses a stronger one (e.g. anthropic/claude-3.7-sonnet or an opus id). Blank fields fall back to Default model. Browse openrouter.ai/models.",
   },
   anthropic: {
     key: "sk-ant-…",
@@ -48,6 +50,8 @@ async function load() {
   els.apiKey.value = cfg.apiKey || "";
   els.model.value = cfg.model || "";
   els.baseUrl.value = cfg.baseUrl || "";
+  els.modelSummarize.value = cfg.modelSummarize || "";
+  els.modelCoach.value = cfg.modelCoach || "";
   toggleFields();
   applyProvider();
 
@@ -84,6 +88,8 @@ async function save() {
     apiKey: els.apiKey.value.trim(),
     model: els.model.value.trim(),
     baseUrl: els.baseUrl.value.trim(),
+    modelSummarize: els.modelSummarize.value.trim(),
+    modelCoach: els.modelCoach.value.trim(),
   });
   els.status.textContent = "Saved ✓";
   setTimeout(() => (els.status.textContent = ""), 1800);

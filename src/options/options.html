@@ -51,11 +51,17 @@
           <label>API key
             <input id="apiKey" type="password" placeholder="sk-or-v1-… (OpenRouter key)" autocomplete="off" />
           </label>
-          <label>Model
+          <label>Default model
             <input id="model" type="text" placeholder="anthropic/claude-3.5-sonnet" />
           </label>
           <label>Base URL <span class="muted">(optional override)</span>
             <input id="baseUrl" type="text" placeholder="https://openrouter.ai/api/v1" />
+          </label>
+          <label>Summarize model <span class="muted">(cheap / free — TL;DR)</span>
+            <input id="modelSummarize" type="text" placeholder="google/gemini-2.0-flash-exp:free" />
+          </label>
+          <label>Coach model <span class="muted">(stronger — Ask / Analyze / Explain)</span>
+            <input id="modelCoach" type="text" placeholder="anthropic/claude-3.7-sonnet" />
           </label>
         </div>
         <p class="muted" id="providerHint" style="margin-top:10px"></p>

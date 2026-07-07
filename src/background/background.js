@@ -105,7 +105,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 
 async function handleLLM(msg) {
   const cfg = await chrome.storage.local.get([
-    "llmEnabled", "provider", "apiKey", "model", "baseUrl",
+    "llmEnabled", "provider", "apiKey", "model", "baseUrl", "modelSummarize", "modelCoach",
   ]);
   if (!cfg.llmEnabled) return { ok: false, error: "LLM backend disabled in options." };
   if (!cfg.apiKey) return { ok: false, error: "No API key set in options." };
@@ -119,11 +119,25 @@ async function handleLLM(msg) {
   // Drop a base URL left over from a different provider so it doesn't misroute.
   if (provider === "openrouter" && /anthropic/i.test(cfg.baseUrl || "")) cfg.baseUrl = "";
   if (provider === "anthropic" && /openrouter/i.test(cfg.baseUrl || "")) cfg.baseUrl = "";
+  // Per-task model: summaries (mode tldr) use the cheap/free model; everything
+  // else (chat/concept/coach/analyze) uses the stronger coach model.
+  cfg.model = pickModel(cfg, provider, msg.mode);
+
   const system = systemFor(msg.persona || "atlas");
   const userPrompt = buildUserPrompt(msg);
 
   if (provider === "anthropic") return callAnthropic(cfg, userPrompt, system);
   return callOpenAICompatible(cfg, userPrompt, provider, system);
+}
+
+function pickModel(cfg, provider, mode) {
+  const def = (cfg.model || "").trim();
+  // Anthropic-direct uses a single model (openrouter-style ids won't work there).
+  if (provider === "anthropic") return def || undefined;
+  const summarize = (cfg.modelSummarize || "").trim();
+  const coach = (cfg.modelCoach || "").trim();
+  if (mode === "tldr") return summarize || def || coach || undefined;
+  return coach || def || summarize || undefined;
 }
 
 function buildUserPrompt(msg) {
