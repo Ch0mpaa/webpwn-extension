@@ -307,7 +307,7 @@ async function clearHighlight() {
 function renderTraffic() {
   const sel = state.traffic.selected;
   el.output.innerHTML = `
-    ${card("Live traffic", `<p class="muted small">Turn the proxy on (Proxy tab), browse the lab — requests appear here automatically. Click one and I'll walk it. No paste.</p>
+    ${card("Live traffic", `<p class="muted small">In Burp/Caido, right-click a request → <b>Send to WebPwn Coach</b>. It appears here automatically — click one and I'll walk it. (Route Chrome through Burp first via the Proxy tab.)</p>
       <div id="tStatus" class="small muted">checking companion…</div>
       <div id="tList" class="tlist" style="margin-top:8px"></div>
       <div class="row"><button id="tRefresh" class="btn">Refresh now</button><button id="tClear" class="btn red">Clear captured</button></div>`)}
@@ -377,7 +377,7 @@ async function clearCompanion() {
 function renderCompanionList() {
   const list = $("#tList"); if (!list) return;
   list.innerHTML = state.traffic.companion.slice(0, 60).map((t, i) =>
-    `<div class="titem" data-i="${i}"><span class="m">${esc(t.method)}</span><span class="u">${esc(t.url || t.path || "")}</span><span class="s">${esc(String(t.status || ""))}</span></div>`).join("");
+    `<div class="titem" data-i="${i}"><span class="m">${esc(t.method)}</span><span class="u">${esc(t.url || t.path || "")}</span>${t.tool ? `<span class="tag">${esc(t.tool)}</span>` : ""}<span class="s">${esc(String(t.status || ""))}</span></div>`).join("");
   list.querySelectorAll(".titem").forEach((row) => row.addEventListener("click", () => selectCompanion(parseInt(row.dataset.i, 10))));
 }
 async function selectCompanion(i) {
@@ -402,7 +402,7 @@ function companionToParsed(full) {
   try { search = new URL(full.url, "http://x").search; } catch (_) {}
   const params = WPC.http.extractParams(search, full.reqBody || "", full.contentType || "");
   return {
-    request: { method: full.method, url: full.url, path: safePath(full.url), query: search, host: full.host, headers: [], params, hasAuth: !!(full.reqHeaders && full.reqHeaders.authorization), hasCookie: !!(full.reqHeaders && full.reqHeaders.cookie), contentType: full.contentType, body: full.reqBody || "" },
+    request: { method: full.method, url: full.url, path: full.path || safePath(full.url), query: search, host: full.host, headers: [], params, hasAuth: !!(full.reqHeaders && full.reqHeaders.authorization), hasCookie: !!(full.reqHeaders && full.reqHeaders.cookie), contentType: full.contentType, body: full.reqBody || "" },
     response: { status: full.status, statusText: "", contentType: full.contentType, headers: [], body: full.respBody || "" },
   };
 }

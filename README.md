@@ -107,8 +107,11 @@ cd companion
 node bridge.js                # 127.0.0.1:8088 (receive-only)
 ```
 
-Send a request to it (copy/paste in the **Traffic** tab, a `POST /traffic` webhook, or —
-later — a Burp Java/Kotlin extension / Caido plugin / MCP server). The **Traffic** tab
+**Preferred path — the Burp Montoya extension** (`burp-extension/`, prebuilt JAR in
+`burp-extension/dist/`). Load it in Burp (Extensions → Add → Java), then right-click any
+request in Proxy / HTTP history / Repeater → **Send to WebPwn Coach** (redacted, or
+raw-local). See `burp-extension/README.md`. Copy/paste and a `POST /traffic` webhook remain
+as fallbacks; a Caido plugin and MCP server are on the roadmap. The **Traffic** tab
 auto-polls the bridge and shows requests live; pick one and:
 
 - **Explain / Map to Lens / Users-Objects / Next Test / Evidence** run **locally** (nothing
@@ -255,9 +258,14 @@ This is a learning tool for **authorized** testing, CTFs, and training labs only
 ```
 webpwn-coach-extension/
 ├── manifest.json
-├── companion/                       # local study proxy (Node, no deps)
-│   ├── proxy.js                     # 127.0.0.1:8088 forward proxy + local API
+├── companion/                       # local traffic BRIDGE (Node, no deps, receive-only)
+│   ├── bridge.js                    # 127.0.0.1:8088 · /health /traffic /traffic/recent /:id
 │   ├── package.json
+│   └── README.md
+├── burp-extension/                  # Burp Montoya extension (preferred bridge path)
+│   ├── src/main/java/coach/*.java   # "Send to WebPwn Coach" context menu → POST /traffic
+│   ├── build.gradle · settings.gradle
+│   ├── dist/webpwn-coach-burp-1.0.0.jar   # prebuilt, load in Burp
 │   └── README.md
 ├── src/
 │   ├── background/background.js     # context menu + side-panel behavior + LLM proxy

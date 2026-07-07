@@ -48,9 +48,11 @@ intercept, modify, or replace Burp/Caido. It has three separate systems.
   only *receives* traffic Burp/Caido pushes to it.
 - API: `GET /health`, `POST /traffic`, `GET /traffic/recent`, `GET /traffic/:id`,
   `DELETE /traffic`.
-- Ingestion (MVP → future): copy/paste or `POST /traffic` webhook now; a Burp Java/Kotlin
-  extension and a Caido plugin later; an MCP server later exposing
-  `list_recent_requests / get_request / explain_request / create_evidence`.
+- **Preferred ingestion: the Burp Montoya extension** (`burp-extension/`, built JAR at
+  `burp-extension/dist/`). Right-click a request in Proxy/History/Repeater →
+  **"Send to WebPwn Coach"** (redacted, or raw-local). Copy/paste and `POST /traffic`
+  webhook remain as fallbacks. A Caido plugin and an MCP server (`list_recent_requests /
+  get_request / explain_request / create_evidence`) are the roadmap.
 - Redacts `Authorization`, `Cookie`, `Set-Cookie`, JWTs, `password=` by default; keeps a
   local raw view on demand; flags when sensitive headers are present.
 - The extension polls `/traffic/recent`, the user selects a request, and **only after

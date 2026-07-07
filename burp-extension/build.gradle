@@ -1,0 +1,25 @@
+plugins {
+    id 'java'
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    // Provided by Burp at runtime — compile against it only.
+    compileOnly 'net.portswigger.burp.extensions:montoya-api:2025.12'
+}
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_17
+    targetCompatibility = JavaVersion.VERSION_17
+}
+
+jar {
+    archiveBaseName = 'webpwn-coach-burp'
+    archiveVersion = '1.0.0'
+}
+
+// `gradle jar` produces build/libs/webpwn-coach-burp-1.0.0.jar
+// Load that JAR in Burp: Extensions → Installed → Add → Extension type: Java.

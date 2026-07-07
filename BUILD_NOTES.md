@@ -161,6 +161,16 @@ Verified: proxy modes set/clear via `chrome.proxy` with bridge-port bypass; brid
 POST(raw+JSON)/recent/detail/redaction/raw-kept-local; Traffic tab shows pushed requests
 live, gates AI behind Analyze, and Reveal-raw stays local.
 
+**Burp Montoya extension (`burp-extension/`).** The preferred bridge ingestion path, built
+against `montoya-api:2025.12` (JDK 17+, `gradle jar`; prebuilt in `dist/`). Registers a
+`ContextMenuItemsProvider` adding "Send to WebPwn Coach (redacted)" / "(raw, local)" in
+Proxy/History/Repeater. Extracts method/url/path/query/headers/body/status/response-preview
++ Burp tool source, redacts in-Burp for redacted mode (raw mode keeps a local-only raw
+dump), and POSTs JSON to the bridge via `java.net.http.HttpClient` (async). The bridge's
+JSON ingest now prefers structured fields and treats `raw` as local-only; verified both
+modes end-to-end (tool/path passthrough, redaction, raw-kept-local). No Repeater/Intruder,
+no interception.
+
 **Part 3 — Guided Step Flow: NOT YET BUILT.** Designed in ARCHITECTURE.md. Next pass:
 a "Session" surface as the default (Daily Objective → Business → Observe → Lens → Choose
 Tool → Validate → Evidence → Report → Interview → Debrief), one step at a time, driven by

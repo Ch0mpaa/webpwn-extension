@@ -85,15 +85,20 @@ function ingest(payload, contentType) {
   let e;
   if (/json/i.test(contentType || "")) {
     let o = {}; try { o = JSON.parse(payload); } catch (_) {}
-    if (o.raw) { e = parseRaw(o.raw); e._raw = o.raw; }
-    else {
+    if (o.method || o.url || o.reqHeaders || o.requestHeaders) {
+      // Structured push (Burp extension) — always wins; raw is kept only locally.
       e = {
         method: o.method || "", url: o.url || "", host: hostOf(o.url),
+        path: o.path || "", tool: o.tool || "",
         reqHeaders: o.reqHeaders || o.requestHeaders || {}, reqBody: o.reqBody || o.requestBody || "",
         status: o.status || (o.response && o.response.status) || null,
         respHeaders: o.respHeaders || o.responseHeaders || {}, respBody: o.respBody || o.responseBody || "",
       };
       e._raw = o.raw || "";
+    } else if (o.raw) {
+      e = parseRaw(o.raw); e._raw = o.raw; e.tool = o.tool || "";
+    } else {
+      e = parseRaw(payload); e._raw = payload;
     }
   } else {
     e = parseRaw(payload); e._raw = payload;
@@ -101,7 +106,7 @@ function ingest(payload, contentType) {
   const sensitive = hasSensitive(e.reqHeaders, e._raw) || hasSensitive(e.respHeaders, "");
   return {
     id: seq++, ts: Date.now(),
-    method: e.method || "?", url: e.url || "", host: e.host || hostOf(e.url),
+    tool: e.tool || "", method: e.method || "?", url: e.url || "", path: e.path || "", host: e.host || hostOf(e.url),
     status: e.status, contentType: (e.respHeaders && (e.respHeaders["content-type"] || e.respHeaders["Content-Type"])) || "",
     reqHeaders: redactHeaders(e.reqHeaders), reqBody: redactBody(e.reqBody),
     respHeaders: redactHeaders(e.respHeaders), respBody: redactBody(e.respBody),
@@ -110,7 +115,7 @@ function ingest(payload, contentType) {
   };
 }
 function hostOf(u) { try { return new URL(u).host; } catch (_) { return ""; } }
-function summary(t) { return { id: t.id, ts: t.ts, method: t.method, url: t.url, host: t.host, status: t.status, hasSensitive: t.hasSensitive }; }
+function summary(t) { return { id: t.id, ts: t.ts, tool: t.tool, method: t.method, url: t.url, path: t.path, host: t.host, status: t.status, hasSensitive: t.hasSensitive }; }
 
 const server = http.createServer((req, res) => {
   const u = new URL(req.url, `http://${HOST}:${PORT}`);
