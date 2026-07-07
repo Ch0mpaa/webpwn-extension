@@ -43,20 +43,22 @@
         <div id="llmFields" class="fields">
           <label>Provider
             <select id="provider">
+              <option value="openrouter">OpenRouter (recommended)</option>
               <option value="anthropic">Anthropic (Claude)</option>
               <option value="openai">OpenAI-compatible</option>
             </select>
           </label>
           <label>API key
-            <input id="apiKey" type="password" placeholder="sk-… / your key" autocomplete="off" />
+            <input id="apiKey" type="password" placeholder="sk-or-v1-… (OpenRouter key)" autocomplete="off" />
           </label>
           <label>Model
-            <input id="model" type="text" placeholder="claude-sonnet-5 / gpt-4o-mini" />
+            <input id="model" type="text" placeholder="anthropic/claude-3.5-sonnet" />
           </label>
           <label>Base URL <span class="muted">(optional override)</span>
-            <input id="baseUrl" type="text" placeholder="https://api.anthropic.com" />
+            <input id="baseUrl" type="text" placeholder="https://openrouter.ai/api/v1" />
           </label>
         </div>
+        <p class="muted" id="providerHint" style="margin-top:10px"></p>
       </section>
 
       <div class="actions">

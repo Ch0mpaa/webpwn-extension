@@ -201,10 +201,26 @@ Switch tone (never substance) between three mentors:
 - **Passwords and secret-like values are never collected.** The extractor skips password
   fields, and a redactor strips tokens/keys/JWTs/hashes before anything could be sent.
 - You can **preview exactly what was read** in the popup ("👁 Preview what I read").
-- Optionally, in **Settings** you can enable a *bring-your-own-key* AI backend
-  (Anthropic Claude or any OpenAI-compatible endpoint) for richer, page-specific
-  coaching. The AI is bound by a strict mentor prompt: coach, never spoil. It only
-  receives the **redacted** context you can preview first.
+- Optionally you can enable a *bring-your-own-key* AI backend for richer,
+  page-specific coaching. The AI is bound by a strict mentor prompt: coach, never spoil.
+  It only receives the **redacted** context you can preview first.
+
+### Enable the AI backend (OpenRouter, Anthropic, or OpenAI-compatible)
+Open the extension **Options** (⚙ Settings → *Open options*, or right-click the icon →
+Options):
+
+1. Tick **Enable AI mentor enrichment**.
+2. **Provider → OpenRouter** (default). Get a key at **https://openrouter.ai/keys**
+   (`sk-or-v1-…`) and paste it into **API key**.
+3. **Model** — any OpenRouter model id, e.g. `anthropic/claude-3.5-sonnet`,
+   `openai/gpt-4o`, `google/gemini-2.0-flash-001` (browse **openrouter.ai/models**).
+   Leave **Base URL** blank — it defaults to `https://openrouter.ai/api/v1`.
+4. **Save.** Now the ✦ AI buttons (TL;DR / Traffic) and **Ask Coach** route through your
+   OpenRouter account.
+
+Anthropic-direct (`console.anthropic.com`) and any OpenAI-compatible endpoint are also
+selectable in the Provider dropdown. Your key is stored in extension storage and sent
+only to the provider you choose.
 
 This is a learning tool for **authorized** testing, CTFs, and training labs only.
 

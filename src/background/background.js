@@ -66,7 +66,7 @@ async function handleLLM(msg) {
   const userPrompt = buildUserPrompt(msg);
 
   if (provider === "anthropic") return callAnthropic(cfg, userPrompt);
-  return callOpenAICompatible(cfg, userPrompt);
+  return callOpenAICompatible(cfg, userPrompt, provider);
 }
 
 function buildUserPrompt(msg) {
@@ -133,22 +133,35 @@ async function callAnthropic(cfg, userPrompt) {
   return { ok: true, text };
 }
 
-async function callOpenAICompatible(cfg, userPrompt) {
-  const base = cfg.baseUrl || "https://api.openai.com/v1";
-  const res = await fetch(base.replace(/\/$/, "") + "/chat/completions", {
-    method: "POST",
-    headers: { "content-type": "application/json", authorization: "Bearer " + cfg.apiKey },
-    body: JSON.stringify({
-      model: cfg.model || "gpt-4o-mini",
-      max_tokens: 1200,
-      messages: [
-        { role: "system", content: MENTOR_SYSTEM },
-        { role: "user", content: userPrompt },
-      ],
-    }),
-  });
-  const data = await res.json();
-  if (!res.ok) return { ok: false, error: data.error ? data.error.message : "API error" };
-  const text = data.choices && data.choices[0] ? data.choices[0].message.content.trim() : "";
+async function callOpenAICompatible(cfg, userPrompt, provider) {
+  const isOR = provider === "openrouter";
+  const base = cfg.baseUrl || (isOR ? "https://openrouter.ai/api/v1" : "https://api.openai.com/v1");
+  const model = cfg.model || (isOR ? "anthropic/claude-3.5-sonnet" : "gpt-4o-mini");
+  const headers = { "content-type": "application/json", authorization: "Bearer " + cfg.apiKey };
+  if (isOR) {
+    // OpenRouter's optional attribution headers (used for its rankings page).
+    headers["HTTP-Referer"] = "https://github.com/Ch0mpaa/webpwn-extension";
+    headers["X-Title"] = "WebPwn Coach";
+  }
+  let res, data;
+  try {
+    res = await fetch(base.replace(/\/$/, "") + "/chat/completions", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        model,
+        max_tokens: 1200,
+        messages: [
+          { role: "system", content: MENTOR_SYSTEM },
+          { role: "user", content: userPrompt },
+        ],
+      }),
+    });
+    data = await res.json();
+  } catch (e) {
+    return { ok: false, error: `Network error reaching ${isOR ? "OpenRouter" : base}: ${e.message}` };
+  }
+  if (!res.ok) return { ok: false, error: (data && data.error && (data.error.message || data.error)) || `HTTP ${res.status}` };
+  const text = data.choices && data.choices[0] ? (data.choices[0].message.content || "").trim() : "";
   return { ok: true, text };
 }
