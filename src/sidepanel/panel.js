@@ -29,7 +29,7 @@ const $ = (s) => document.querySelector(s);
 const el = {
   siteBadge: $("#siteBadge"), personaRow: $("#personaRow"), personaIntro: $("#personaIntro"),
   tabs: $("#tabs"), output: $("#output"), aiBtn: $("#aiBtn"), statusMsg: $("#statusMsg"),
-  settingsBtn: $("#settingsBtn"),
+  settingsBtn: $("#settingsBtn"), refreshBtn: $("#refreshBtn"),
 };
 
 // Panels whose content depends on the current page — auto re-render on nav.
@@ -72,6 +72,12 @@ function bindUI() {
     render();
   });
   el.aiBtn.addEventListener("click", enrichAI);
+  el.refreshBtn.addEventListener("click", async () => {
+    el.statusMsg.textContent = "Re-scanning…";
+    await loadContext();
+    el.statusMsg.textContent = state.clean ? "Re-scanned." : "Couldn't read this page.";
+    render();
+  });
 
   // Auto-detect the current page: re-scan when the active tab changes or a page
   // finishes loading — no manual refresh needed.
@@ -192,6 +198,7 @@ function renderTLDR() {
     <div id="aiOut"></div>
     ${labBanner}
     ${weakBanner}
+    ${whatIRead()}
     ${missionCard}
     <p class="muted small" style="margin:-4px 0 8px">Topic (for reference): ${chips || esc(d.lensSource)}</p>
     ${card("In plain English", `<p>${esc(d.summary)}</p>`)}
@@ -207,6 +214,20 @@ function renderTLDR() {
   wireConceptChips();
   const sb = $("#aiSummarize"); if (sb) sb.addEventListener("click", summarizeWithAI);
   const se = $("#aiSelection"); if (se) se.addEventListener("click", explainSelection);
+}
+
+// Transparency: show exactly what the extractor read, so wrong-region grabs
+// (e.g. a portal/dashboard instead of the lesson) are obvious. Hit ⟳ to re-read.
+function whatIRead() {
+  const c = state.clean || {};
+  const s = c.stats || {};
+  const head = (c.headers || []).slice(0, 6).map((h) => "• " + h.text).join("\n");
+  const firstPara = (c.paragraphs || [])[0] || "(no body text found — likely a portal/nav page; open the actual lesson and hit ⟳)";
+  return `<details class="preview" style="margin:0 0 8px">
+    <summary class="small muted">👁 What I read — “${esc(c.title || "")}” · ${s.paragraphs || 0}p · ${s.headers || 0}h · ${s.buttons || 0}btn · ${s.links || 0}link</summary>
+    <div class="pre" style="margin-top:6px">${esc((head ? head + "\n\n" : "") + firstPara).slice(0, 900)}</div>
+    <p class="muted small" style="margin-top:4px">Wrong content? Open the actual lesson, then hit ⟳ (top-right) to re-scan.</p>
+  </details>`;
 }
 
 // Ask ATLAS to summarize the actual page (works on any topic).

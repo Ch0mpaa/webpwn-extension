@@ -37,20 +37,31 @@
     return true;
   }
 
+  // Pick the real content region by favouring PROSE and penalising link/button-heavy
+  // chrome (nav, dashboards, lab-selection portals). This avoids summarising the
+  // wrapper UI instead of the lesson.
   function pickMain() {
-    const direct = document.querySelector(
-      "main, article, [role=main], .maincontainer, .content, #content, .container-content"
-    );
-    if (direct) return direct;
-    // Otherwise pick the block with the most paragraph text that isn't chrome.
-    let best = document.body, bestLen = 0;
-    document.querySelectorAll("section, div").forEach((el) => {
-      if (inChrome(el) || el.querySelector("section, main, article")) return;
-      const len = (el.textContent || "").length;
-      const paras = el.querySelectorAll("p").length;
-      if (paras >= 1 && len > bestLen && len < 20000) { best = el; bestLen = len; }
+    const sel =
+      "main, article, [role=main], section, .content, #content, .maincontainer, " +
+      "[class*=content], [class*=module], [class*=training], [class*=lesson], " +
+      "[class*=article], [class*=post], [class*=markdown], [class*=prose], [class*=reading]";
+    const cands = [];
+    document.querySelectorAll(sel).forEach((el) => { if (cands.length < 300) cands.push(el); });
+    document.querySelectorAll("div").forEach((d) => {
+      if (cands.length < 400 && d.querySelectorAll(":scope > p").length >= 2) cands.push(d);
     });
-    return best;
+
+    let best = null, bestScore = 0;
+    for (const el of cands) {
+      if (el === document.body || inChrome(el)) continue;
+      let prose = 0;
+      el.querySelectorAll("p, li").forEach((p) => { prose += (p.textContent || "").trim().length; });
+      if (prose < 150) continue;                       // needs real reading content
+      const noise = el.querySelectorAll("a, button, input, nav").length;
+      const score = prose - noise * 30;                // dashboards = many links, little prose → low
+      if (score > bestScore) { bestScore = score; best = el; }
+    }
+    return best || document.querySelector("main, article, [role=main]") || document.body;
   }
 
   function extract() {
