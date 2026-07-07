@@ -110,7 +110,15 @@ async function handleLLM(msg) {
   if (!cfg.llmEnabled) return { ok: false, error: "LLM backend disabled in options." };
   if (!cfg.apiKey) return { ok: false, error: "No API key set in options." };
 
-  const provider = cfg.provider || "anthropic";
+  // Auto-detect the provider from the key/base URL so a mismatched dropdown
+  // can't misroute (e.g. an OpenRouter key sent to Anthropic → "invalid x-api-key").
+  const key = String(cfg.apiKey).trim();
+  let provider = cfg.provider || "openrouter";
+  if (/^sk-or-/i.test(key) || /openrouter\.ai/i.test(cfg.baseUrl || "")) provider = "openrouter";
+  else if (/^sk-ant-/i.test(key) || /api\.anthropic\.com/i.test(cfg.baseUrl || "")) provider = "anthropic";
+  // Drop a base URL left over from a different provider so it doesn't misroute.
+  if (provider === "openrouter" && /anthropic/i.test(cfg.baseUrl || "")) cfg.baseUrl = "";
+  if (provider === "anthropic" && /openrouter/i.test(cfg.baseUrl || "")) cfg.baseUrl = "";
   const system = systemFor(msg.persona || "atlas");
   const userPrompt = buildUserPrompt(msg);
 
