@@ -222,6 +222,13 @@ Anthropic-direct (`console.anthropic.com`) and any OpenAI-compatible endpoint ar
 selectable in the Provider dropdown. Your key is stored in extension storage and sent
 only to the provider you choose.
 
+The AI runs on the **ATLAS mentor system prompt** (a strict "build my mental model, never
+hand me the answer" persona with the full methodology, Assessment Lens, progressive
+hints, and a browser/DevTools-first tool philosophy). It also receives the **page signals**
+the extension auto-detects — whether you're on a **hands-on lab** and its solved status,
+the auto-detected topic, and visible storage key names — so it coaches *this* page, in the
+arena you're actually in. BIT and BYTE are tone overrides on the same rules.
+
 This is a learning tool for **authorized** testing, CTFs, and training labs only.
 
 ---

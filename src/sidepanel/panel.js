@@ -115,7 +115,9 @@ async function loadContext() {
       state.raw = resp.context;
       state.site = WPC.detectSite(resp.context);
       state.clean = WPC.redactContext(resp.context).context;
-      el.siteBadge.textContent = state.site.badge;
+      const lab = state.raw.lab;
+      el.siteBadge.textContent =
+        state.site.badge + (lab && lab.isLab ? " · 🧪" + (lab.status ? " " + lab.status : " lab") : "");
       const s = await sendToTab(tab.id, { type: "WPC_STORAGE" });
       state.storage = s && s.ok ? s.storage : null;
     } else {
@@ -150,12 +152,18 @@ function renderTLDR() {
     WPC.memory.record({ type: "concept-encountered", conceptId: d.concepts[0].id });
   }
   const chips = d.concepts.map((c) => `<span class="chip" data-concept="${c.id}">${esc(c.name)}</span>`).join("");
+  const lab = d.lab;
+  const labBanner = lab && lab.isLab
+    ? `<div class="warn">🧪 <b>Hands-on lab${lab.difficulty ? " · " + esc(lab.difficulty) : ""}${lab.status ? " · " + esc(lab.status) : ""}.</b> You're in the arena — I'll coach you through it, I won't solve it. Work the methodology, not the payload.</div>`
+    : "";
   el.output.innerHTML = `
+    ${labBanner}
     ${chips ? `<div class="chips">${chips}</div>` : ""}
-    ${card("Summary", `<p>${esc(d.summary)}</p>`)}
+    ${card("30-second summary", `<p>${esc(d.summary)}</p>`)}
     ${card("Why it matters (consultant)", `<p>${esc(d.whyItMatters)}</p>`)}
     ${card(`Assessment Lens · ${esc(d.lensSource)}`, lensTable(fullLens(d.lens, d.lensSource)))}
     ${card("Mental model", `<div class="mental">🧭 ${esc(d.mentalModel)}</div>`)}
+    ${card("What to observe — browser first (before Burp)", ul(d.browserFirst))}
     ${card("Beginner mistakes", ul(d.beginnerMistakes))}
     ${card("Senior thinking", ul(d.seniorThinking))}
     ${card(d.siteFraming.title, frameChain(d.siteFraming.chain) + `<p class="muted small" style="margin-top:6px">${esc(d.siteFraming.note)}</p>`)}
@@ -200,6 +208,7 @@ function renderElements() {
     ${card(`Links (${(c.links || []).length})`, (c.links || []).slice(0, 20).map((l) => `<div class="small">• ${esc(l.text)} <span class="muted">→ ${esc(l.href)}</span></div>`).join("") || `<p class="muted">none</p>`)}
     ${card(`Code / snippets (${(c.code || []).length})`, (c.code || []).slice(0, 6).map((x) => `<div class="pre">${esc(x)}</div>`).join("") || `<p class="muted">none visible</p>`)}
     ${card("Cookies / storage (trust boundary)", storageBlock(st))}
+    ${card("Find it in the Inspector (learn to see it yourself)", ul(WPC.engine.browserFirstFor(detectedConcepts()[0])))}
     ${card("Likely trust boundaries", ul(trustBoundaryHints(c, st)))}
     ${card("Observe first / ignore", `<p><b class="ok-line">Observe:</b> forms that change state, object IDs, auth/session indicators, API-looking links.</p><p class="muted"><b>Ignore (fluff):</b> nav chrome, marketing copy, footers.</p>`)}`;
 }
@@ -489,7 +498,9 @@ async function askSend(text) {
     state.chat.push({ role: "coach", text: "✦ (asking AI mentor…)" });
     renderAsk();
     try {
-      const resp = await chrome.runtime.sendMessage({ type: "WPC_LLM", mode: "chat", question: text, context: state.clean || {}, siteLabel: state.site.label });
+      const resp = await chrome.runtime.sendMessage(Object.assign(
+        { type: "WPC_LLM", mode: "chat", question: text, context: state.clean || {} },
+        llmMeta()));
       state.chat.pop();
       state.chat.push({ role: "coach", text: resp && resp.ok ? "✦ " + resp.text : "✦ AI unavailable: " + ((resp && resp.error) || "error") });
     } catch (e) { state.chat.pop(); state.chat.push({ role: "coach", text: "✦ AI error: " + e.message }); }
@@ -600,6 +611,25 @@ function toggle(key, label, checked) {
 
 // ---- AI enrichment ----------------------------------------------------------
 
+// Common page signals sent to the AI so it "sees what I see" and coaches to it.
+function llmMeta() {
+  let conceptName = null;
+  try {
+    const f = WPC.detectConceptsForContext(state.clean || {}, 1);
+    conceptName = f[0] ? f[0].concept.name : null;
+  } catch (_) {}
+  const keys = state.settings.incStorage && state.storage
+    ? (state.storage.local || []).concat(state.storage.session || []).slice(0, 10)
+    : [];
+  return {
+    persona: state.persona,
+    siteLabel: state.site.label,
+    lab: state.raw ? state.raw.lab : null,
+    concept: conceptName,
+    storageKeys: keys,
+  };
+}
+
 async function enrichAI() {
   if (!state.clean) return;
   el.statusMsg.textContent = "Asking AI…";
@@ -607,7 +637,9 @@ async function enrichAI() {
   box.innerHTML = `<h3>✦ AI Mentor (${state.mode})</h3><p class="muted">Thinking…</p>`;
   el.output.prepend(box);
   try {
-    const resp = await chrome.runtime.sendMessage({ type: "WPC_LLM", mode: state.mode === "traffic" ? "tldr" : state.mode, context: state.clean, siteLabel: state.site.label });
+    const resp = await chrome.runtime.sendMessage(Object.assign(
+      { type: "WPC_LLM", mode: state.mode === "traffic" ? "tldr" : state.mode, context: state.clean },
+      llmMeta()));
     box.innerHTML = `<h3>✦ AI Mentor</h3><pre class="pre">${esc(resp && resp.ok ? resp.text : (resp && resp.error) || "failed")}</pre>`;
   } catch (e) { box.innerHTML = `<h3>✦ AI Mentor</h3><p class="muted">${esc(e.message)}</p>`; }
   el.statusMsg.textContent = "";

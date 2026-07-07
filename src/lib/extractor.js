@@ -146,6 +146,8 @@
       12000
     );
 
+    out.lab = detectLab();
+
     out.stats = {
       headers: out.headers.length,
       paragraphs: out.paragraphs.length,
@@ -154,6 +156,39 @@
       links: out.links.length,
       code: out.code.length,
     };
+    return out;
+  }
+
+  // Detect whether this is a hands-on LAB/CHALLENGE (vs a reading lesson), and
+  // its solved state — so the coach can switch into "you're in the arena" mode.
+  function detectLab() {
+    const out = { isLab: false, kind: "lesson", status: null, difficulty: "", title: "" };
+    let txt = "";
+    try { txt = (document.body.innerText || "").slice(0, 6000); } catch (_) {}
+
+    // Solved / not-solved status (PortSwigger, HTB, Juice Shop patterns).
+    if (/congratulations,?\s+you (have\s+)?solved the lab/i.test(txt)) out.status = "solved";
+    else if (/\bnot solved\b/i.test(txt)) out.status = "not-solved";
+    else if (/\bis-solved\b/i.test(document.body.className + "")) out.status = "solved";
+
+    // Lab/challenge markers.
+    const statusEl = document.querySelector(
+      '[class*="lab-status"], [class*="labheader"], [class*="lab-header"], [widgetcontainer], [class*="challenge"]'
+    );
+    const isLab =
+      !!statusEl ||
+      out.status !== null ||
+      /\bLAB\b/.test(txt) ||
+      /\bchallenge\b/i.test((document.title || "")) ||
+      /\baccess the lab\b/i.test(txt);
+    out.isLab = isLab;
+    out.kind = isLab ? "lab" : "lesson";
+
+    // Difficulty (PortSwigger) / and a short lab title from the h1.
+    const diff = txt.match(/\b(APPRENTICE|PRACTITIONER|EXPERT)\b/);
+    if (diff) out.difficulty = diff[1];
+    const h1 = document.querySelector("h1");
+    if (h1) out.title = (h1.textContent || "").replace(/\s+/g, " ").trim().slice(0, 120);
     return out;
   }
 

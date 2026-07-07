@@ -100,6 +100,8 @@
       beginnerMistakes: top ? top.mistakes : WPC.getConcept("trust-boundary").mistakes,
       seniorThinking: top ? top.senior : WPC.getConcept("trust-boundary").senior,
       nextObservation: top ? top.next : WPC.getConcept("trust-boundary").next,
+      browserFirst: browserFirstFor(top || WPC.getConcept("trust-boundary")),
+      lab: ctx.lab || null,
       siteFraming: { title: frame.title, chain: frame.chain, note: frame.note },
       consultantChain: CONSULTANT_CHAIN,
       nudge: persona.nudge(),
@@ -120,6 +122,24 @@
     if (topic) return `This page covers “${topic}.”`;
     if (firstSentence) return firstSentence;
     return "";
+  }
+
+  // Browser-first coaching: what to check in the browser / DevTools BEFORE Burp,
+  // so the learner practises finding things in Inspect themselves.
+  function browserFirstFor(c) {
+    const tags = (c && c.tags) || [];
+    const has = (x) => tags.includes(x);
+    const out = [];
+    if (has("session") || has("auth"))
+      out.push("DevTools → Application → Cookies & Storage: find the value that equals “logged-in you”. Note HttpOnly / Secure / SameSite.");
+    if (has("access-control") || has("authorization"))
+      out.push("DevTools → Network: find the request carrying the object id — that's the one you'll compare across accounts.");
+    if (has("injection"))
+      out.push("DevTools → Network: submit once, watch the exact request your input creates, and read the response difference.");
+    if (has("client-side"))
+      out.push("View-source / DevTools → Elements: is the validation only client-side? Then find the request it produces.");
+    out.push("Right-click → Inspect. Use View-Source and the Network tab first — reproduce what you see before reaching for Burp.");
+    return out.slice(0, 3);
   }
 
   function lensWhy(c) {
@@ -383,6 +403,7 @@
     buildConcept,
     revealHint,
     buildHighlightPlan,
+    browserFirstFor,
     HL_COLORS,
     CATEGORY_TEACH,
     SITE_FRAMES,

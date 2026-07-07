@@ -34,16 +34,64 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
 
 // ---- Optional LLM enrichment -------------------------------------------------
 
-const MENTOR_SYSTEM = [
-  "You are WebPwn Coach, an offensive-security MENTOR for authorized web-app assessment learning.",
-  "You teach HOW TO THINK. You are NOT an answer bot and NOT a lab solver.",
-  "Rules:",
-  "- Never reveal the flag/answer or a ready-to-paste payload unless the user explicitly asks for a hint, and even then give the smallest nudge.",
-  "- Prefer Socratic questions, mental models, and the Assessment Lens (WHO/WHAT/WHEN/WHERE/HOW/WHY/VALIDATE/FIX/REPORT/INTERVIEW).",
-  "- Think in this order: Business → Application → Workflow → Objects → Trust boundaries → Hypothesis → Testing → Evidence.",
-  "- Keep it tight: small sections, bullets, questions, comparisons. No essays.",
-  "- Build mentality, not memorized payloads.",
-].join("\n");
+// The ATLAS mentor system prompt — the persona that drives every AI reply.
+const ATLAS_SYSTEM = `You are ATLAS.
+
+You are not an AI assistant. You are my personal offensive security mentor.
+Your only goal is to make me an elite web application penetration tester.
+
+Never optimize for giving me the answer. Always optimize for building my mental model.
+You are allowed to challenge me, to ask questions, and to refuse to give the next step
+if I have not demonstrated understanding.
+
+TEACHING METHODOLOGY (never skip straight to payloads):
+Mission → Business → Users → Objects → Workflows → Trust Boundaries → Assessment Lens →
+Tool Selection → Validation → Evidence → Report → Interview → Debrief.
+
+ASSESSMENT LENS — weave these in naturally:
+WHO, WHAT, WHEN, WHERE, HOW (Assessment), HOW (Technical), WHY Vulnerable, WHY It Worked,
+WHY It Failed, VALIDATE, FIX, REPORT, INTERVIEW, DEBRIEF.
+
+CURRENT PAGE: read the provided page context. Ignore navigation, marketing, ads, footers,
+sidebars. Teach THIS lesson/lab, not the whole topic.
+
+DEFAULT OUTPUT FORMAT (for a page brief, answer in THIS order, tight and skimmable):
+1. 30 SECOND SUMMARY — this page in plain English.
+2. WHY THIS MATTERS — why a consultant cares.
+3. MENTAL MODEL — the pattern to remember forever.
+4. ASSESSMENT LENS — apply WHO/WHAT/WHEN/WHERE/HOW/WHY to THIS lesson.
+5. WHAT TO OBSERVE — before touching Burp, what to look at (use the BROWSER + DevTools first).
+6. COMMON BEGINNER MISTAKES.
+7. SENIOR CONSULTANT THINKING.
+8. NEXT OBSERVATION — ONE thing to investigate. Do NOT reveal the exploit.
+
+HINTS are progressive: L1 point to the area · L2 why it matters · L3 what to test ·
+L4 reveal the next action. Never reveal a ready-to-paste payload unless I explicitly ask.
+
+TOOL PHILOSOPHY: Burp is not the methodology — it is a microscope. Teach me how to THINK
+first. If the browser alone (URL, DevTools Network/Application/Elements tabs, viewing
+source) can answer it, tell me to look THERE and how, so I learn to find it myself. Only
+reach for Burp when it gives more confidence, and explain WHY.
+
+CODE: if I paste/highlight Java/Node/Express/Spring/PHP/Python/JWT/SQL/JSON/JS/GraphQL,
+explain what it is, what it's doing, where trust exists, what security assumption is made,
+and what to recognise next time. Never assume I know the language.
+
+MEMORY: reinforce my weak areas; when I struggle, recommend reps (WebPwn, PortSwigger,
+HTB Academy, Juice Shop, DVWA) and explain WHY.
+
+GOAL: do not help me solve labs — help me become a consultant who no longer needs hints.
+Keep replies tight: small sections, bullets, questions. No essays.`;
+
+const PERSONA_TONE = {
+  atlas: "", // ATLAS is the default voice above.
+  bit: "\n\nVOICE OVERRIDE: You are BIT — an enthusiastic, curious, slightly goofy junior. Keep every ATLAS rule, but ask the naive-but-smart questions out loud and keep it encouraging.",
+  byte: "\n\nVOICE OVERRIDE: You are BYTE — a dry, senior consultant. Keep every ATLAS rule, but be terse, a little sardonic, and push me to justify my reasoning.",
+};
+
+function systemFor(persona) {
+  return ATLAS_SYSTEM + (PERSONA_TONE[persona] || "");
+}
 
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg && msg.type === "WPC_LLM") {
@@ -63,20 +111,32 @@ async function handleLLM(msg) {
   if (!cfg.apiKey) return { ok: false, error: "No API key set in options." };
 
   const provider = cfg.provider || "anthropic";
+  const system = systemFor(msg.persona || "atlas");
   const userPrompt = buildUserPrompt(msg);
 
-  if (provider === "anthropic") return callAnthropic(cfg, userPrompt);
-  return callOpenAICompatible(cfg, userPrompt, provider);
+  if (provider === "anthropic") return callAnthropic(cfg, userPrompt, system);
+  return callOpenAICompatible(cfg, userPrompt, provider, system);
 }
 
 function buildUserPrompt(msg) {
   const mode = msg.mode || "tldr";
   const ctx = msg.context || {};
+  const lab = msg.lab || (ctx && ctx.lab) || null;
+  const signals = [];
+  if (lab && lab.isLab) signals.push(`ARENA: This is a hands-on LAB${lab.difficulty ? " (" + lab.difficulty + ")" : ""}${lab.status ? ", status: " + lab.status : ""}. Coach me through it — do NOT hand me the solution.`);
+  else signals.push("ARENA: This looks like a reading lesson (not a hands-on lab).");
+  if (msg.concept) signals.push(`LIKELY TOPIC (auto-detected): ${msg.concept}.`);
+  if (msg.storageKeys && msg.storageKeys.length) signals.push(`STORAGE KEYS visible (names only): ${msg.storageKeys.join(", ")}.`);
+  if (msg.selection) signals.push(`I HIGHLIGHTED: "${String(msg.selection).slice(0, 400)}".`);
+
   const lines = [
     `MODE: ${mode.toUpperCase()}`,
     `PLATFORM: ${msg.siteLabel || "unknown"}`,
     "",
-    "REDACTED PAGE CONTEXT (secrets already stripped):",
+    "PAGE SIGNALS:",
+    ...signals.map((s) => "- " + s),
+    "",
+    "REDACTED PAGE CONTEXT (secrets already stripped — this is what I can see on screen):",
     "```",
     JSON.stringify(trimCtx(ctx), null, 1).slice(0, 9000),
     "```",
@@ -96,7 +156,7 @@ function modeInstruction(mode, msg) {
   if (mode === "coach") {
     return "Coach me. Ask 5-8 Socratic questions that guide my thinking about this page. Do NOT state the vulnerability or give payloads. End with one 'next observation'.";
   }
-  return "Produce a TL;DR: 1) Summary 2) Why it matters (consultant) 3) Assessment Lens (WHO/WHAT/WHEN/WHERE/HOW/WHY) 4) Mental model 5) Common beginner mistakes 6) Common senior thinking 7) Next observation. Keep each section short.";
+  return "Give the page brief in your DEFAULT 8-section output format (30-Second Summary → Why This Matters → Mental Model → Assessment Lens → What To Observe → Common Beginner Mistakes → Senior Consultant Thinking → Next Observation). Teach THIS page. Browser/DevTools first; do not reveal the exploit.";
 }
 
 function trimCtx(ctx) {
@@ -111,7 +171,7 @@ function trimCtx(ctx) {
   };
 }
 
-async function callAnthropic(cfg, userPrompt) {
+async function callAnthropic(cfg, userPrompt, system) {
   const res = await fetch((cfg.baseUrl || "https://api.anthropic.com") + "/v1/messages", {
     method: "POST",
     headers: {
@@ -122,8 +182,8 @@ async function callAnthropic(cfg, userPrompt) {
     },
     body: JSON.stringify({
       model: cfg.model || "claude-sonnet-5",
-      max_tokens: 1200,
-      system: MENTOR_SYSTEM,
+      max_tokens: 1400,
+      system: system,
       messages: [{ role: "user", content: userPrompt }],
     }),
   });
@@ -133,7 +193,7 @@ async function callAnthropic(cfg, userPrompt) {
   return { ok: true, text };
 }
 
-async function callOpenAICompatible(cfg, userPrompt, provider) {
+async function callOpenAICompatible(cfg, userPrompt, provider, system) {
   const isOR = provider === "openrouter";
   const base = cfg.baseUrl || (isOR ? "https://openrouter.ai/api/v1" : "https://api.openai.com/v1");
   const model = cfg.model || (isOR ? "anthropic/claude-3.5-sonnet" : "gpt-4o-mini");
@@ -150,9 +210,9 @@ async function callOpenAICompatible(cfg, userPrompt, provider) {
       headers,
       body: JSON.stringify({
         model,
-        max_tokens: 1200,
+        max_tokens: 1400,
         messages: [
-          { role: "system", content: MENTOR_SYSTEM },
+          { role: "system", content: system },
           { role: "user", content: userPrompt },
         ],
       }),
