@@ -171,16 +171,15 @@
     else if (/\bnot solved\b/i.test(txt)) out.status = "not-solved";
     else if (/\bis-solved\b/i.test(document.body.className + "")) out.status = "solved";
 
-    // Lab/challenge markers.
+    // Lab/challenge markers — require a real status/widget, NOT just the word "lab"
+    // in body text (reading modules mention "lab" constantly).
     const statusEl = document.querySelector(
-      '[class*="lab-status"], [class*="labheader"], [class*="lab-header"], [widgetcontainer], [class*="challenge"]'
+      '[class*="lab-status"], [class*="labheader"], [class*="lab-header"]'
     );
     const isLab =
       !!statusEl ||
       out.status !== null ||
-      /\bLAB\b/.test(txt) ||
-      /\bchallenge\b/i.test((document.title || "")) ||
-      /\baccess the lab\b/i.test(txt);
+      /\b(access the lab|launch (the )?lab|not solved|solve the lab)\b/i.test(txt);
     out.isLab = isLab;
     out.kind = isLab ? "lab" : "lesson";
 

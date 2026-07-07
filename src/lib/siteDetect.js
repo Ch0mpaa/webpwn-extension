@@ -20,7 +20,7 @@
     htb: {
       id: "htb",
       label: "Hack The Box Academy",
-      hostMatch: /(academy\.hackthebox\.com|hackthebox\.com\/academy)/i,
+      hostMatch: /hackthebox\.(com|eu)|\bhtb\b/i,
       badge: "HTB Mode",
       tool: "Pwnbox / Burp",
     },
@@ -57,13 +57,16 @@
    */
   function detectSite(ctx) {
     ctx = ctx || {};
-    const host = (ctx.host || location.hostname || "").toLowerCase();
-    const title = (ctx.title || document.title || "").toLowerCase();
+    const host = (ctx.host || "").toLowerCase();
+    const url = (ctx.url || "").toLowerCase();
+    // host+url so we match even if only one is populated (never the extension's own origin)
+    const hostUrl = (host + " " + url).trim() || (location.hostname || "").toLowerCase();
+    const title = (ctx.title || "").toLowerCase();
     const body = (ctx.bodyText || "").toLowerCase();
 
     for (const key of Object.keys(SITES)) {
       const s = SITES[key];
-      if (s.hostMatch && s.hostMatch.test(host)) return public_(s);
+      if (s.hostMatch && s.hostMatch.test(hostUrl)) return public_(s);
       if (s.titleMatch && s.titleMatch.test(title)) return public_(s);
       if (s.titleMatch && s.titleMatch.test(body.slice(0, 400))) return public_(s);
     }

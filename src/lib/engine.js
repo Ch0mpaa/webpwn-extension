@@ -62,6 +62,11 @@
     opts = opts || {};
     const site = WPC.detectSite(ctx);
     const persona = WPC.getPersona(opts.persona);
+    // Did the offline library actually recognise anything on this page?
+    const realHits = WPC.detectConceptsForContext
+      ? WPC.detectConceptsForContext(ctx, 4)
+      : WPC.detectConcepts(ctx.bodyText || "", 4);
+    const weakDetection = realHits.length === 0 || (realHits[0] && realHits[0].score < 4);
     const found = primaryConcepts(ctx, 4);
     const top = found[0] ? found[0].concept : null;
     const frame = SITE_FRAMES[site.id] || SITE_FRAMES.generic;
@@ -102,6 +107,7 @@
       nextObservation: top ? top.next : WPC.getConcept("trust-boundary").next,
       browserFirst: browserFirstFor(top || WPC.getConcept("trust-boundary")),
       mission: WPC.getMission ? WPC.getMission((top || WPC.getConcept("trust-boundary")).id, top) : null,
+      weakDetection,
       lab: ctx.lab || null,
       siteFraming: { title: frame.title, chain: frame.chain, note: frame.note },
       consultantChain: CONSULTANT_CHAIN,

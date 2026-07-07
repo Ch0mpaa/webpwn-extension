@@ -170,8 +170,28 @@ function renderTLDR() {
       <ul>${m.lookFor.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>
       <p class="mission-prove">❓ ${esc(m.prove)}</p>
     </div>` : "";
+  // AI is the only thing that can truly summarize arbitrary content (HTB modules,
+  // AI red-teaming, anything outside the built-in web-vuln library).
+  const aiHero = state.llmEnabled
+    ? `<div class="card mission">
+         <h3>✦ Read this page with ATLAS</h3>
+         <p class="muted small">Gets a real, page-specific breakdown (works on any topic — HTB, PortSwigger, anything).</p>
+         <div class="row">
+           <button id="aiSummarize" class="btn primary">✦ Summarize this page</button>
+           <button id="aiSelection" class="btn">Explain highlighted text</button>
+         </div>
+       </div>`
+    : `<div class="warn">Turn on the AI backend (⚙ Settings → Open options → OpenRouter) so I can summarize <i>any</i> page, not just the built-in web-vuln topics. Then ✦ buttons appear here.</div>`;
+
+  const weakBanner = d.weakDetection
+    ? `<div class="warn">🤔 This page is outside my built-in web-vuln library, so the offline breakdown below is generic. For a real summary of <b>this</b> page, use <b>✦ Summarize this page</b> above.</div>`
+    : "";
+
   el.output.innerHTML = `
+    ${aiHero}
+    <div id="aiOut"></div>
     ${labBanner}
+    ${weakBanner}
     ${missionCard}
     <p class="muted small" style="margin:-4px 0 8px">Topic (for reference): ${chips || esc(d.lensSource)}</p>
     ${card("In plain English", `<p>${esc(d.summary)}</p>`)}
@@ -185,6 +205,35 @@ function renderTLDR() {
     ${card("Methodology", frameChain(["Mission","Business","Users","Objects","Workflows","Trust Boundaries","Assessment Lens","Tool Choice","Validate","Evidence","Report","Interview","Debrief"]))}
     ${card("Next observation", `<p class="next">▶ ${esc(d.nextObservation)}</p><p class="nudge">${esc(d.nudge)}</p>`)}`;
   wireConceptChips();
+  const sb = $("#aiSummarize"); if (sb) sb.addEventListener("click", summarizeWithAI);
+  const se = $("#aiSelection"); if (se) se.addEventListener("click", explainSelection);
+}
+
+// Ask ATLAS to summarize the actual page (works on any topic).
+async function summarizeWithAI() {
+  if (!state.clean) return;
+  const out = $("#aiOut") || el.output;
+  out.innerHTML = `<div class="card ai-out"><h3>✦ ATLAS</h3><p class="spin">Reading the page…</p></div>`;
+  try {
+    const resp = await chrome.runtime.sendMessage(Object.assign(
+      { type: "WPC_LLM", mode: "tldr", context: state.clean }, await llmMeta()));
+    out.innerHTML = `<div class="card ai-out"><h3>✦ ATLAS — this page</h3><pre class="pre">${esc(resp && resp.ok ? resp.text : (resp && resp.error) || "AI unavailable")}</pre></div>`;
+  } catch (e) { out.innerHTML = `<div class="card ai-out"><h3>✦ ATLAS</h3><p class="muted">${esc(e.message)}</p></div>`; }
+}
+
+// Grab the user's current page selection and have ATLAS explain it in context.
+async function explainSelection() {
+  const out = $("#aiOut") || el.output;
+  const tab = await activeTab(); if (!tab) return;
+  const sel = await sendToTab(tab.id, { type: "WPC_GET_SELECTION" });
+  const text = sel && sel.selection ? sel.selection.trim() : "";
+  if (!text) { out.innerHTML = `<div class="card"><p class="muted">Highlight some text on the page first, then click “Explain highlighted text”.</p></div>`; return; }
+  out.innerHTML = `<div class="card ai-out"><h3>✦ ATLAS explains</h3><p class="muted small">“${esc(text.slice(0, 120))}${text.length > 120 ? "…" : ""}”</p><p class="spin">Thinking…</p></div>`;
+  try {
+    const resp = await chrome.runtime.sendMessage(Object.assign(
+      { type: "WPC_LLM", mode: "concept", phrase: text, context: state.clean || {} }, await llmMeta()));
+    out.innerHTML = `<div class="card ai-out"><h3>✦ ATLAS explains</h3><p class="muted small">“${esc(text.slice(0, 120))}${text.length > 120 ? "…" : ""}”</p><pre class="pre">${esc(resp && resp.ok ? resp.text : (resp && resp.error) || "AI unavailable")}</pre></div>`;
+  } catch (e) { out.innerHTML = `<div class="card"><p class="muted">${esc(e.message)}</p></div>`; }
 }
 
 // ---- Lens -------------------------------------------------------------------
