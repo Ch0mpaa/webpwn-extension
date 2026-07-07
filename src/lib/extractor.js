@@ -160,6 +160,30 @@
       12000
     );
 
+    // Full VISIBLE page text (innerText respects display:none / visibility).
+    // This is what the AI actually reads — the model can ignore nav/marketing,
+    // but it can't summarise content our region-picker failed to grab. Prefer
+    // the picked region, but fall back to the whole body so the lesson is never
+    // missed just because it lives in an unusual container.
+    let full = "";
+    try {
+      const regionText = (root.innerText || "").trim();
+      const bodyTextAll = (document.body.innerText || "").trim();
+      full = regionText.length > 200 ? regionText : bodyTextAll;
+      if (bodyTextAll.length > full.length * 1.6) full = bodyTextAll; // body has lots more → use it
+    } catch (_) {}
+    // Same-origin iframes (some platforms render the lesson in one). Cross-origin
+    // frames throw on access → skipped.
+    try {
+      document.querySelectorAll("iframe").forEach((f) => {
+        try {
+          const t = f.contentDocument && f.contentDocument.body && f.contentDocument.body.innerText;
+          if (t && t.trim().length > 200) full += "\n\n[frame]\n" + t.trim();
+        } catch (_) {}
+      });
+    } catch (_) {}
+    out.fullText = full.replace(/\n{3,}/g, "\n\n").slice(0, 16000);
+
     out.lab = detectLab();
 
     out.stats = {

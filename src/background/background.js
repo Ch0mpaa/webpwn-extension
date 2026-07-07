@@ -160,6 +160,7 @@ function buildUserPrompt(msg) {
   if (msg.storageKeys && msg.storageKeys.length) signals.push(`STORAGE KEYS visible (names only): ${msg.storageKeys.join(", ")}.`);
   if (msg.selection) signals.push(`I HIGHLIGHTED: "${String(msg.selection).slice(0, 400)}".`);
 
+  const fullText = String(ctx.fullText || "").slice(0, 12000);
   const lines = [
     `MODE: ${mode.toUpperCase()}`,
     `PLATFORM: ${msg.siteLabel || "unknown"}`,
@@ -167,9 +168,14 @@ function buildUserPrompt(msg) {
     "PAGE SIGNALS:",
     ...signals.map((s) => "- " + s),
     "",
-    "REDACTED PAGE CONTEXT (secrets already stripped — this is what I can see on screen):",
+    "FULL VISIBLE PAGE TEXT (secrets stripped — the real content is in here; IGNORE nav / product / marketing chrome and teach the actual lesson/content on this page):",
     "```",
-    JSON.stringify(trimCtx(ctx), null, 1).slice(0, 9000),
+    fullText || "(no visible text captured)",
+    "```",
+    "",
+    "STRUCTURED EXTRACT (title / headings / forms / links):",
+    "```",
+    JSON.stringify(trimCtx(ctx), null, 1).slice(0, 4000),
     "```",
     "",
     modeInstruction(mode, msg),
