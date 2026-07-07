@@ -12,6 +12,36 @@
   const WPC = globalThis.WPC || {};
   let cardEl = null;
 
+  // ---- SPA navigation detection ----------------------------------------------
+  // Many learning platforms (PortSwigger Academy, Juice Shop…) are single-page
+  // apps: clicking "Continue" swaps content via history.pushState WITHOUT a full
+  // load, so the side panel never hears about it. Patch history + poll the URL,
+  // and ping the panel so it re-scans the new page.
+  let lastUrl = location.href;
+  function notifyNav() {
+    if (location.href === lastUrl) return;
+    lastUrl = location.href;
+    try { chrome.runtime.sendMessage({ type: "WPC_NAV", url: location.href }); } catch (_) {}
+  }
+  (function hookHistory() {
+    try {
+      const wrap = (name) => {
+        const orig = history[name];
+        history[name] = function () {
+          const r = orig.apply(this, arguments);
+          setTimeout(notifyNav, 50);
+          return r;
+        };
+      };
+      wrap("pushState");
+      wrap("replaceState");
+      window.addEventListener("popstate", () => setTimeout(notifyNav, 50));
+      window.addEventListener("hashchange", () => setTimeout(notifyNav, 50));
+      // Safety net for frameworks that don't touch history in a hookable way.
+      setInterval(notifyNav, 1200);
+    } catch (_) {}
+  })();
+
   chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     try {
       switch (msg && msg.type) {

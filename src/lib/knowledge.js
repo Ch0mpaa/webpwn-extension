@@ -1097,7 +1097,7 @@
     {
       id: "rate-limit",
       name: "Rate Limiting / Brute Force / Enumeration",
-      aliases: ["rate limit", "brute force", "credential stuffing", "enumeration", "user enumeration", "otp bypass"],
+      aliases: ["rate limit", "brute force", "brute-force", "brute-forcing", "brute forcing", "credential stuffing", "enumeration", "user enumeration", "username enumeration", "account enumeration", "usernames", "username", "otp bypass", "password spraying", "login attempts", "account lockout"],
       tags: ["auth", "logic"],
       simple:
         "Without limits, attackers can guess credentials, tokens, or enumerate valid users/objects at scale.",
@@ -1292,6 +1292,21 @@
     }
     scored.sort((a, b) => b.score - a.score);
     return limit ? scored.slice(0, limit) : scored;
+  };
+
+  /**
+   * Detect concepts for an extracted page context, weighting the title and
+   * headings far above body text so the page's actual TOPIC dominates (a
+   * stray word in a paragraph shouldn't outvote the <h1>).
+   */
+  WPC.detectConceptsForContext = function (ctx, limit) {
+    if (!ctx) return [];
+    const title = ctx.title || "";
+    const heads = (ctx.headers || []).map((h) => (h && h.text) || h || "").join("  ");
+    const paras = (ctx.paragraphs || []).join("  ");
+    // title ×4, headings ×2, body ×1
+    const weighted = [title, title, title, title, heads, heads, paras].join("  \n  ");
+    return WPC.detectConcepts(weighted, limit);
   };
 
   /** Find the single best concept for a highlighted phrase (Concept Mode). */

@@ -10,6 +10,15 @@
 
   const SKIP_TAGS = new Set(["SCRIPT", "STYLE", "NOSCRIPT", "SVG", "IFRAME"]);
   const FLUFF_HINT = /(cookie|consent|newsletter|advert|banner|footer-nav|social)/i;
+  // Site chrome / navigation we must NOT read as content (it pollutes topic
+  // detection — e.g. a "My progress" sidebar listing every course section).
+  const CHROME_SEL =
+    "nav, aside, header, footer, [role=navigation], [role=complementary]," +
+    "[class*=progress], [class*=sidebar], [class*=side-nav], [class*=breadcrumb]," +
+    "[class*=widgetcontainer], [class*=toc], [id*=sidebar], [id*=nav]";
+  function inChrome(el) {
+    try { return !!(el.closest && el.closest(CHROME_SEL)); } catch (_) { return false; }
+  }
 
   function clean(s, max) {
     if (!s) return "";
@@ -26,10 +35,19 @@
   }
 
   function pickMain() {
-    return (
-      document.querySelector("main, article, [role=main], .content, #content") ||
-      document.body
+    const direct = document.querySelector(
+      "main, article, [role=main], .maincontainer, .content, #content, .container-content"
     );
+    if (direct) return direct;
+    // Otherwise pick the block with the most paragraph text that isn't chrome.
+    let best = document.body, bestLen = 0;
+    document.querySelectorAll("section, div").forEach((el) => {
+      if (inChrome(el) || el.querySelector("section, main, article")) return;
+      const len = (el.textContent || "").length;
+      const paras = el.querySelectorAll("p").length;
+      if (paras >= 1 && len > bestLen && len < 20000) { best = el; bestLen = len; }
+    });
+    return best;
   }
 
   function extract() {
@@ -50,14 +68,15 @@
     // Headers
     root.querySelectorAll("h1,h2,h3,h4").forEach((h) => {
       if (out.headers.length >= 25) return;
+      if (inChrome(h)) return;
       const t = clean(h.textContent, 160);
       if (t && !FLUFF_HINT.test(t)) out.headers.push({ level: h.tagName, text: t });
     });
 
-    // Paragraphs (skip tiny fragments and obvious fluff)
+    // Paragraphs (skip tiny fragments, nav chrome, and obvious fluff)
     root.querySelectorAll("p, li").forEach((p) => {
       if (out.paragraphs.length >= 40) return;
-      if (FLUFF_HINT.test(p.className || "")) return;
+      if (inChrome(p) || FLUFF_HINT.test(p.className || "")) return;
       const t = clean(p.textContent, 400);
       if (t && t.length > 40) out.paragraphs.push(t);
     });

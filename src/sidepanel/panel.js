@@ -80,6 +80,8 @@ function bindUI() {
   if (chrome.windows && chrome.windows.onFocusChanged) {
     chrome.windows.onFocusChanged.addListener((wid) => { if (wid !== chrome.windows.WINDOW_ID_NONE) scheduleRescan(); });
   }
+  // Content script tells us when a single-page-app navigation happened.
+  chrome.runtime.onMessage.addListener((msg) => { if (msg && msg.type === "WPC_NAV") scheduleRescan(); });
 }
 
 function scheduleRescan() {
@@ -220,7 +222,9 @@ function trustBoundaryHints(c, st) {
 // ---- Highlight (reuses the content highlighter) -----------------------------
 
 function detectedConcepts() {
-  const found = WPC.detectConcepts(state.clean.bodyText || "", 5).map((f) => f.concept);
+  const found = (WPC.detectConceptsForContext
+    ? WPC.detectConceptsForContext(state.clean, 5)
+    : WPC.detectConcepts(state.clean.bodyText || "", 5)).map((f) => f.concept);
   if (!found.length) found.push(WPC.getConcept("trust-boundary"));
   return found;
 }

@@ -48,7 +48,9 @@
   const CONSULTANT_CHAIN = ["Business", "Application", "Workflow", "Objects", "Trust Boundaries", "Hypothesis", "Testing", "Evidence"];
 
   function primaryConcepts(ctx, limit) {
-    const found = WPC.detectConcepts(ctx.bodyText || "", limit || 4);
+    const found = WPC.detectConceptsForContext
+      ? WPC.detectConceptsForContext(ctx, limit || 4)
+      : WPC.detectConcepts(ctx.bodyText || "", limit || 4);
     if (found.length) return found;
     // Fallback: teach the core mindset when no concept is obvious.
     const tb = WPC.getConcept("trust-boundary");
@@ -66,11 +68,17 @@
 
     const conceptNames = found.map((f) => f.concept.name);
 
-    const summary = top
-      ? `This page is teaching around: ${conceptNames.slice(0, 3).join(", ")}. ` +
-        `At its core: ${top.simple}`
-      : `This page doesn't announce a single vulnerability class. Treat it as raw application ` +
-        `surface: read what it does, then decide what's worth trusting.`;
+    // Content-derived TL;DR: lead with the page's own topic (title + first real
+    // sentence), then map it to the detected concept. This is a summary of THIS
+    // page, not a canned concept blurb.
+    const lead = pageLead(ctx);
+    const summary = lead
+      ? (top
+          ? `${lead} That's ${top.name.replace(/\s*\(.*\)/, "")} territory.`
+          : `${lead} No single vuln class jumps out — treat it as raw application surface.`)
+      : (top
+          ? `This page is about ${top.name}. At its core: ${top.simple}`
+          : `This page doesn't announce a single vulnerability class. Read what it does, then decide what's worth trusting.`);
 
     const whyItMatters = top
       ? `A consultant cares because ${lensWhy(top)} On a real engagement this is where an attacker ends up ` +
@@ -98,6 +106,20 @@
       signoff: persona.signoff(),
       stats: ctx.stats || null,
     };
+  }
+
+  // Build a one-line "what is this page about" lead from the page's own content.
+  function pageLead(ctx) {
+    let topic = (ctx.headers && ctx.headers[0] && ctx.headers[0].text) || ctx.title || "";
+    topic = topic.replace(/\s*[|\-–—]\s*(web security academy|portswigger|hack the box|academy).*$/i, "").trim();
+    const para = (ctx.paragraphs || []).find((p) => p && p.length > 50) || "";
+    const firstSentence = para
+      ? para.split(/(?<=[.!?])\s+/)[0].slice(0, 220).replace(/…$/, "").trim()
+      : "";
+    if (topic && firstSentence) return `“${topic}” — ${firstSentence}`;
+    if (topic) return `This page covers “${topic}.”`;
+    if (firstSentence) return firstSentence;
+    return "";
   }
 
   function lensWhy(c) {
