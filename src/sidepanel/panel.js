@@ -181,9 +181,9 @@ function renderTLDR() {
   const aiHero = state.llmEnabled
     ? `<div class="card mission">
          <h3>✦ Read this page with ATLAS</h3>
-         <p class="muted small">Gets a real, page-specific breakdown (works on any topic — HTB, PortSwigger, anything).</p>
+         <p class="muted small">Fast 10-point TL;DR of the key ideas — no fluff. Works on any topic.</p>
          <div class="row">
-           <button id="aiSummarize" class="btn primary">✦ Summarize this page</button>
+           <button id="aiSummarize" class="btn primary">✦ 10-point TL;DR</button>
            <button id="aiSelection" class="btn">Explain highlighted text</button>
          </div>
        </div>`
@@ -199,18 +199,22 @@ function renderTLDR() {
     ${labBanner}
     ${weakBanner}
     ${whatIRead()}
-    ${missionCard}
-    <p class="muted small" style="margin:-4px 0 8px">Topic (for reference): ${chips || esc(d.lensSource)}</p>
+    <p class="muted small" style="margin:2px 0 8px">Topic (for reference): ${chips || esc(d.lensSource)}</p>
     ${card("In plain English", `<p>${esc(d.summary)}</p>`)}
-    ${card("Why it matters (consultant)", `<p>${esc(d.whyItMatters)}</p>`)}
-    ${card(`Assessment Lens · ${esc(d.lensSource)}`, lensTable(fullLens(d.lens, d.lensSource)))}
-    ${card("Mental model", `<div class="mental">🧭 ${esc(d.mentalModel)}</div>`)}
-    ${card("What to observe — browser first (before Burp)", ul(d.browserFirst))}
-    ${card("Beginner mistakes", ul(d.beginnerMistakes))}
-    ${card("Senior thinking", ul(d.seniorThinking))}
-    ${card(d.siteFraming.title, frameChain(d.siteFraming.chain) + `<p class="muted small" style="margin-top:6px">${esc(d.siteFraming.note)}</p>`)}
-    ${card("Methodology", frameChain(["Mission","Business","Users","Objects","Workflows","Trust Boundaries","Assessment Lens","Tool Choice","Validate","Evidence","Report","Interview","Debrief"]))}
-    ${card("Next observation", `<p class="next">▶ ${esc(d.nextObservation)}</p><p class="nudge">${esc(d.nudge)}</p>`)}`;
+    <details class="preview" style="margin-top:4px">
+      <summary class="small muted">Show the methodology breakdown (lens, mental model, mistakes) — off to the side</summary>
+      <div style="margin-top:8px">
+        ${missionCard}
+        ${card("Why it matters (consultant)", `<p>${esc(d.whyItMatters)}</p>`)}
+        ${card(`Assessment Lens · ${esc(d.lensSource)}`, lensTable(fullLens(d.lens, d.lensSource)))}
+        ${card("Mental model", `<div class="mental">🧭 ${esc(d.mentalModel)}</div>`)}
+        ${card("What to observe — browser first (before Burp)", ul(d.browserFirst))}
+        ${card("Beginner mistakes", ul(d.beginnerMistakes))}
+        ${card("Senior thinking", ul(d.seniorThinking))}
+        ${card(d.siteFraming.title, frameChain(d.siteFraming.chain) + `<p class="muted small" style="margin-top:6px">${esc(d.siteFraming.note)}</p>`)}
+        ${card("Next observation", `<p class="next">▶ ${esc(d.nextObservation)}</p><p class="nudge">${esc(d.nudge)}</p>`)}
+      </div>
+    </details>`;
   wireConceptChips();
   const sb = $("#aiSummarize"); if (sb) sb.addEventListener("click", summarizeWithAI);
   const se = $("#aiSelection"); if (se) se.addEventListener("click", explainSelection);
@@ -673,8 +677,15 @@ function renderAsk() {
   const msgs = state.chat.map((m) => m.role === "user"
     ? `<div class="msg user">${esc(m.text)}</div>`
     : `<div class="msg coach">${renderMarkdown(m.text)}</div>`).join("");
-  const opener = `${pageOneLiner()}\n\n**What are you stuck on?** Tell me in your own words — "I'm lost in X", "what does this mean?", or paste a request / JWT / code — and I'll explain it.`;
+  const opener = `${pageOneLiner()}\n\n**What are you stuck on?** Tell me in your own words — "I'm lost in X", "what does this mean?", or paste a request / JWT / code — and I'll explain it and tell you what to do.`;
+  const toolbar = state.llmEnabled
+    ? `<div class="row" style="margin-bottom:8px">
+         <button id="coachTldr" class="btn primary">📄 TL;DR this page (10 pts)</button>
+         <button id="coachSel" class="btn">Explain what I highlighted</button>
+       </div>`
+    : `<div class="warn">Turn on the AI backend (⚙ Settings → Open options) so I can summarize and explain. Without it I can only point you at concepts.</div>`;
   el.output.innerHTML = `
+    ${toolbar}
     <div class="chat" id="chat">${msgs || `<div class="msg coach">${renderMarkdown(opener)}</div>`}</div>
     <div class="chat-in"><textarea id="askIn" placeholder="What do you need help with?"></textarea><button id="askGo" class="btn primary">Send</button></div>
     ${state.chat.length ? `<div class="row" style="margin-top:6px"><button id="askClear" class="btn ghost-btn">New question</button></div>` : ""}`;
@@ -683,8 +694,35 @@ function renderAsk() {
   go.addEventListener("click", send);
   input.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } });
   const clr = $("#askClear"); if (clr) clr.addEventListener("click", () => { state.chat = []; renderAsk(); });
+  const t = $("#coachTldr"); if (t) t.addEventListener("click", () => coachRun("tldr", "TL;DR this page"));
+  const cs = $("#coachSel"); if (cs) cs.addEventListener("click", coachExplainSelection);
   const chat = $("#chat"); if (chat) chat.scrollTop = chat.scrollHeight;
-  input.focus();
+  if (input) input.focus();
+}
+
+// Run an AI request and drop the answer straight into the Coach chat.
+async function coachRun(mode, userLabel, extra) {
+  state.chat.push({ role: "user", text: userLabel });
+  state.chat.push({ role: "coach", text: "_…reading the page…_" });
+  renderAsk();
+  try {
+    const resp = await chrome.runtime.sendMessage(Object.assign(
+      { type: "WPC_LLM", mode, context: state.clean || {} }, extra || {}, await llmMeta()));
+    state.chat.pop();
+    state.chat.push({ role: "coach", text: resp && resp.ok ? cleanAI(resp.text) : "AI unavailable: " + ((resp && resp.error) || "error") });
+  } catch (e) { state.chat.pop(); state.chat.push({ role: "coach", text: "AI error: " + e.message }); }
+  renderAsk();
+}
+
+async function coachExplainSelection() {
+  const tab = await activeTab(); if (!tab) return;
+  const sel = await sendToTab(tab.id, { type: "WPC_GET_SELECTION" });
+  const text = sel && sel.selection ? sel.selection.trim() : "";
+  if (!text) {
+    state.chat.push({ role: "coach", text: "Highlight some text on the page first, then click **Explain what I highlighted**." });
+    return renderAsk();
+  }
+  coachRun("concept", `Explain: "${text.slice(0, 80)}${text.length > 80 ? "…" : ""}"`, { phrase: text });
 }
 
 async function askSend(text) {
