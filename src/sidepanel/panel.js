@@ -217,7 +217,7 @@ async function summarizeWithAI() {
   try {
     const resp = await chrome.runtime.sendMessage(Object.assign(
       { type: "WPC_LLM", mode: "tldr", context: state.clean }, await llmMeta()));
-    out.innerHTML = `<div class="card ai-out"><h3>✦ ATLAS — this page</h3><pre class="pre">${esc(resp && resp.ok ? resp.text : (resp && resp.error) || "AI unavailable")}</pre></div>`;
+    out.innerHTML = `<div class="card ai-out"><h3>✦ ATLAS — this page</h3><pre class="pre">${esc(aiText(resp))}</pre></div>`;
   } catch (e) { out.innerHTML = `<div class="card ai-out"><h3>✦ ATLAS</h3><p class="muted">${esc(e.message)}</p></div>`; }
 }
 
@@ -232,7 +232,7 @@ async function explainSelection() {
   try {
     const resp = await chrome.runtime.sendMessage(Object.assign(
       { type: "WPC_LLM", mode: "concept", phrase: text, context: state.clean || {} }, await llmMeta()));
-    out.innerHTML = `<div class="card ai-out"><h3>✦ ATLAS explains</h3><p class="muted small">“${esc(text.slice(0, 120))}${text.length > 120 ? "…" : ""}”</p><pre class="pre">${esc(resp && resp.ok ? resp.text : (resp && resp.error) || "AI unavailable")}</pre></div>`;
+    out.innerHTML = `<div class="card ai-out"><h3>✦ ATLAS explains</h3><p class="muted small">“${esc(text.slice(0, 120))}${text.length > 120 ? "…" : ""}”</p><pre class="pre">${esc(aiText(resp))}</pre></div>`;
   } catch (e) { out.innerHTML = `<div class="card"><p class="muted">${esc(e.message)}</p></div>`; }
 }
 
@@ -535,7 +535,7 @@ async function analyzeRequest(p, sel) {
         question: `Walk me through this captured request as my mentor. Method ${p.request.method} ${p.request.path}${p.request.query || ""}, status ${p.response ? p.response.status : "?"}. Cover: parameters, cookies/auth presence, object IDs, status meaning, response differences to look for, the trust boundary, and the single likely next test. Ask me questions; don't hand me the exploit.`,
         context: state.clean || {} },
       await llmMeta()));
-    out.innerHTML = card("✦ ATLAS analysis", `<pre class="pre">${esc(resp && resp.ok ? resp.text : (resp && resp.error) || "AI unavailable")}</pre>`);
+    out.innerHTML = card("✦ ATLAS analysis", `<pre class="pre">${esc(aiText(resp))}</pre>`);
     if (sel) sel.analyzed = true;
   } catch (e) { out.innerHTML = card("✦ ATLAS analysis", `<p class="muted">${esc(e.message)}</p>`); }
 }
@@ -665,7 +665,7 @@ async function askSend(text) {
         { type: "WPC_LLM", mode: "chat", question: text, context: state.clean || {} },
         await llmMeta()));
       state.chat.pop();
-      state.chat.push({ role: "coach", text: resp && resp.ok ? "✦ " + resp.text : "✦ AI unavailable: " + ((resp && resp.error) || "error") });
+      state.chat.push({ role: "coach", text: resp && resp.ok ? "✦ " + cleanAI(resp.text) : "✦ AI unavailable: " + ((resp && resp.error) || "error") });
     } catch (e) { state.chat.pop(); state.chat.push({ role: "coach", text: "✦ AI error: " + e.message }); }
     renderAsk();
   }
@@ -837,7 +837,7 @@ async function enrichAI() {
     const resp = await chrome.runtime.sendMessage(Object.assign(
       { type: "WPC_LLM", mode: state.mode === "traffic" ? "tldr" : state.mode, context: state.clean },
       await llmMeta()));
-    box.innerHTML = `<h3>✦ AI Mentor</h3><pre class="pre">${esc(resp && resp.ok ? resp.text : (resp && resp.error) || "failed")}</pre>`;
+    box.innerHTML = `<h3>✦ AI Mentor</h3><pre class="pre">${esc(aiText(resp, "failed"))}</pre>`;
   } catch (e) { box.innerHTML = `<h3>✦ AI Mentor</h3><p class="muted">${esc(e.message)}</p>`; }
   el.statusMsg.textContent = "";
 }
@@ -876,3 +876,13 @@ async function injectContent(tabId) {
   } catch (_) {}
 }
 function esc(s) { return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;"); }
+// Reasoning models (local, R1-style) emit <think>…</think> chain-of-thought — strip it.
+function cleanAI(t) {
+  return String(t == null ? "" : t)
+    .replace(/<think>[\s\S]*?<\/think>/gi, "")
+    .replace(/<thinking>[\s\S]*?<\/thinking>/gi, "")
+    .trim();
+}
+function aiText(resp, fallback) {
+  return resp && resp.ok ? (cleanAI(resp.text) || "(empty response)") : ((resp && resp.error) || fallback || "AI unavailable");
+}

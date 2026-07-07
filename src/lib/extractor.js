@@ -29,6 +29,9 @@
 
   function isVisible(el) {
     if (!el || SKIP_TAGS.has(el.tagName)) return false;
+    // getClientRects() is empty when the element (or any ancestor) is
+    // display:none — catches mobile-only / media-query-hidden banners.
+    if (!el.getClientRects || el.getClientRects().length === 0) return false;
     const st = el.ownerDocument.defaultView.getComputedStyle(el);
     if (st.display === "none" || st.visibility === "hidden" || st.opacity === "0") return false;
     return true;
@@ -68,15 +71,15 @@
     // Headers
     root.querySelectorAll("h1,h2,h3,h4").forEach((h) => {
       if (out.headers.length >= 25) return;
-      if (inChrome(h)) return;
+      if (inChrome(h) || !isVisible(h)) return;
       const t = clean(h.textContent, 160);
       if (t && !FLUFF_HINT.test(t)) out.headers.push({ level: h.tagName, text: t });
     });
 
-    // Paragraphs (skip tiny fragments, nav chrome, and obvious fluff)
+    // Paragraphs (skip tiny fragments, hidden/mobile-only content, nav chrome, fluff)
     root.querySelectorAll("p, li").forEach((p) => {
       if (out.paragraphs.length >= 40) return;
-      if (inChrome(p) || FLUFF_HINT.test(p.className || "")) return;
+      if (inChrome(p) || !isVisible(p) || FLUFF_HINT.test(p.className || "")) return;
       const t = clean(p.textContent, 400);
       if (t && t.length > 40) out.paragraphs.push(t);
     });
