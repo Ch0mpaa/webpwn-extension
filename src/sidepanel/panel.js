@@ -14,7 +14,8 @@ const state = {
   storage: null,
   site: { id: "generic", label: "Generic Web Application", badge: "…" },
   llmEnabled: false,
-  companionUrl: "http://127.0.0.1:8088",
+  bridgeUrl: "http://127.0.0.1:8088",
+  proxy: { mode: "direct", burpHost: "127.0.0.1", burpPort: "8080", caidoHost: "127.0.0.1", caidoPort: "8080", customHost: "127.0.0.1", customPort: "8080" },
   settings: { incPageText: true, incCookies: true, incStorage: true, incImport: true },
   recordedUrl: null,
   // per-panel scratch
@@ -38,11 +39,12 @@ let rescanTimer = null;
 init();
 
 async function init() {
-  const st = await chrome.storage.local.get(["persona", "llmEnabled", "companionUrl", "wpc_settings"]);
+  const st = await chrome.storage.local.get(["persona", "llmEnabled", "bridgeUrl", "companionUrl", "wpc_settings", "wpc_proxy"]);
   state.persona = st.persona || "atlas";
   state.llmEnabled = !!st.llmEnabled;
-  if (st.companionUrl) state.companionUrl = st.companionUrl;
+  state.bridgeUrl = st.bridgeUrl || st.companionUrl || state.bridgeUrl;
   if (st.wpc_settings) Object.assign(state.settings, st.wpc_settings);
+  if (st.wpc_proxy) Object.assign(state.proxy, st.wpc_proxy);
   markPersona();
   bindUI();
   await loadContext();
@@ -325,18 +327,19 @@ function renderTraffic() {
   state.traffic.poll = setInterval(() => pollCompanion(), 3000);
 }
 
+function bridgeBase() { return state.bridgeUrl.replace(/\/$/, ""); }
+
 async function pollCompanion() {
-  const base = state.companionUrl.replace(/\/$/, "");
   const st = $("#tStatus");
   try {
-    const r = await fetch(base + "/traffic");
+    const r = await fetch(bridgeBase() + "/traffic/recent");
     const data = await r.json();
     const prev = state.traffic.companion.length;
     state.traffic.companion = data.items || [];
-    if (st) st.innerHTML = `<span class="ok-line">● companion connected</span> — ${state.traffic.companion.length} request(s) captured`;
+    if (st) st.innerHTML = `<span class="ok-line">● bridge connected</span> — ${state.traffic.companion.length} request(s) received from Burp/Caido`;
     if (state.traffic.companion.length !== prev || !document.querySelector("#tList .titem")) renderCompanionList();
   } catch (_) {
-    if (st) st.innerHTML = `<span class="bad-line">● companion not running.</span> Start it, then Proxy tab → ON. <span class="mono">node companion/proxy.js</span>`;
+    if (st) st.innerHTML = `<span class="bad-line">● bridge not running.</span> Start it: <span class="mono">node companion/bridge.js</span>, then send a request from Burp/Caido.`;
   }
 }
 
@@ -367,20 +370,9 @@ function importHar(e) {
   reader.readAsText(file);
 }
 
-async function loadCompanion() {
-  try {
-    const r = await fetch(state.companionUrl.replace(/\/$/, "") + "/traffic");
-    const data = await r.json();
-    state.traffic.companion = data.items || [];
-    el.statusMsg.textContent = `Loaded ${state.traffic.companion.length} captured request(s).`;
-  } catch (_) {
-    el.statusMsg.textContent = "Companion not reachable. Start it (Proxy tab).";
-  }
-  renderTraffic();
-}
 async function clearCompanion() {
-  try { await fetch(state.companionUrl.replace(/\/$/, "") + "/traffic", { method: "DELETE" }); } catch (_) {}
-  state.traffic.companion = []; renderTraffic();
+  try { await fetch(bridgeBase() + "/traffic", { method: "DELETE" }); } catch (_) {}
+  state.traffic.companion = []; state.traffic.selected = null; renderTraffic();
 }
 function renderCompanionList() {
   const list = $("#tList"); if (!list) return;
@@ -395,19 +387,22 @@ async function selectCompanion(i) {
     parsed = { request: { method: item.method, url: item.url, path: safePath(item.url), query: "", host: item.host, headers: [], params: item.params || [], hasAuth: item.hasAuth, hasCookie: false, contentType: item.contentType, body: "" }, response: { status: item.status, statusText: "", contentType: item.contentType, headers: [] } };
   } else {
     try {
-      const r = await fetch(state.companionUrl.replace(/\/$/, "") + "/traffic/" + item.id);
+      const r = await fetch(bridgeBase() + "/traffic/" + item.id);
       const full = await r.json();
       parsed = companionToParsed(full);
+      state.traffic.selected = { source: "bridge", parsed, sensitive: full.hasSensitive, raw: full.raw || "", analyzed: false };
+      return renderTraffic();
     } catch (_) { el.statusMsg.textContent = "Couldn't load detail."; return; }
   }
-  state.traffic.selected = { source: "companion", parsed };
+  state.traffic.selected = { source: "har", parsed };
   renderTraffic();
 }
 function companionToParsed(full) {
-  let path = safePath(full.url);
-  const params = WPC.http.extractParams(new URL(full.url, "http://x").search, full.reqBody || "", full.contentType || "");
+  let search = "";
+  try { search = new URL(full.url, "http://x").search; } catch (_) {}
+  const params = WPC.http.extractParams(search, full.reqBody || "", full.contentType || "");
   return {
-    request: { method: full.method, url: full.url, path, query: new URL(full.url, "http://x").search, host: full.host, headers: [], params, hasAuth: !!(full.reqHeaders && full.reqHeaders.authorization), hasCookie: !!(full.reqHeaders && full.reqHeaders.cookie), contentType: full.contentType, body: full.reqBody || "" },
+    request: { method: full.method, url: full.url, path: safePath(full.url), query: search, host: full.host, headers: [], params, hasAuth: !!(full.reqHeaders && full.reqHeaders.authorization), hasCookie: !!(full.reqHeaders && full.reqHeaders.cookie), contentType: full.contentType, body: full.reqBody || "" },
     response: { status: full.status, statusText: "", contentType: full.contentType, headers: [], body: full.respBody || "" },
   };
 }
@@ -418,20 +413,50 @@ function renderTrafficResult(sel) {
   if (sel.artifact) { box.innerHTML = artifactHtml(sel.artifact); wireConceptChips(); return; }
   if (!sel.parsed || !sel.parsed.ok && !sel.parsed.request) { box.innerHTML = card("No parse", `<p class="muted">Couldn't parse that as HTTP.</p>`); return; }
   const p = sel.parsed;
+  const sensitiveWarn = sel.sensitive
+    ? `<div class="warn">⚠ This request contains sensitive headers (Authorization / Cookie / token). They're redacted before anything is sent to AI. Reveal raw stays local.</div>`
+    : "";
   box.innerHTML = `
+    ${sensitiveWarn}
     ${card("Selected request", `<div class="pre">${esc((p.request ? p.request.method + " " + p.request.path + (p.request.query || "") : "") + (p.response ? "  →  " + p.response.status : ""))}</div>
       <div class="row">
-        <button class="btn" data-act="explain">Explain Request</button>
+        <button class="btn" data-act="explain">Explain (local)</button>
         <button class="btn" data-act="lens">Map to Lens</button>
-        <button class="btn" data-act="who">Identify Users/Objects</button>
-        <button class="btn pink" data-act="test">Suggest Next Test</button>
-        <button class="btn" data-act="evidence">Create Evidence</button>
-      </div>`)}
+        <button class="btn" data-act="who">Users/Objects</button>
+        <button class="btn pink" data-act="test">Next Test</button>
+        <button class="btn" data-act="evidence">Evidence</button>
+      </div>
+      <div class="row">
+        ${sel.raw ? `<button class="btn" data-act="raw">Reveal raw (local)</button>` : ""}
+        ${state.llmEnabled ? `<button id="tAnalyze" class="btn primary">✦ Analyze with ATLAS (sends to AI)</button>` : `<span class="muted small">Enable AI in Settings to Analyze with ATLAS.</span>`}
+      </div>
+      <p class="muted small">Local buttons never leave your browser. Only “Analyze with ATLAS” sends (redacted) data to the AI — and only when you click it.</p>`)}
     <div id="tAct"></div>`;
-  box.querySelectorAll("[data-act]").forEach((b) => b.addEventListener("click", () => trafficAction(b.dataset.act, p)));
+  box.querySelectorAll("[data-act]").forEach((b) => b.addEventListener("click", () => trafficAction(b.dataset.act, p, sel)));
+  const az = $("#tAnalyze");
+  if (az) az.addEventListener("click", () => analyzeRequest(p, sel));
 }
-function trafficAction(act, p) {
+
+async function analyzeRequest(p, sel) {
   const out = $("#tAct");
+  out.innerHTML = card("✦ ATLAS analysis", `<p class="spin">Analyzing…</p>`);
+  const tl = WPC.explain.trafficLens(p);
+  try {
+    const resp = await chrome.runtime.sendMessage(Object.assign(
+      { type: "WPC_LLM", mode: "chat",
+        question: `Walk me through this captured request as my mentor. Method ${p.request.method} ${p.request.path}${p.request.query || ""}, status ${p.response ? p.response.status : "?"}. Cover: parameters, cookies/auth presence, object IDs, status meaning, response differences to look for, the trust boundary, and the single likely next test. Ask me questions; don't hand me the exploit.`,
+        context: state.clean || {} },
+      await llmMeta()));
+    out.innerHTML = card("✦ ATLAS analysis", `<pre class="pre">${esc(resp && resp.ok ? resp.text : (resp && resp.error) || "AI unavailable")}</pre>`);
+    if (sel) sel.analyzed = true;
+  } catch (e) { out.innerHTML = card("✦ ATLAS analysis", `<p class="muted">${esc(e.message)}</p>`); }
+}
+function trafficAction(act, p, sel) {
+  const out = $("#tAct");
+  if (act === "raw") {
+    out.innerHTML = card("Raw (local only — never sent)", `<div class="pre">${esc((sel && sel.raw) || "(no raw available)")}</div>`);
+    return;
+  }
   const tl = WPC.explain.trafficLens(p);
   if (act === "explain") {
     const s = [`${p.request ? p.request.method + " " + p.request.path : ""}`, ...(p.request ? p.request.params.map((x) => `param ${x.name}${x.idish ? " (looks like an id ⚑)" : ""} in ${x.where}`) : [])];
@@ -577,63 +602,82 @@ function coachReply(text) {
 
 // ---- Proxy ------------------------------------------------------------------
 
+// ---- Part 1: Proxy Switcher (FoxyProxy replacement — chrome.proxy only) ------
+
+const PROXY_LABELS = { direct: "DIRECT", burp: "BURP ACTIVE", caido: "CAIDO ACTIVE", custom: "CUSTOM ACTIVE" };
+
+function proxyTargets() {
+  const p = state.proxy;
+  return {
+    burp: { host: p.burpHost || "127.0.0.1", port: p.burpPort || "8080" },
+    caido: { host: p.caidoHost || "127.0.0.1", port: p.caidoPort || "8080" },
+    custom: { host: p.customHost || "127.0.0.1", port: p.customPort || "8080" },
+  };
+}
+function bridgePort() { try { return new URL(state.bridgeUrl).port || "8088"; } catch (_) { return "8088"; } }
+
 async function renderProxy() {
-  const status = await getProxyStatus();
-  const enabled = status && status.value && status.value.mode && status.value.mode !== "system" && status.value.mode !== "direct";
-  const health = await companionHealth();
+  const mode = state.proxy.mode || "direct";
+  const t = proxyTargets();
+  const active = mode !== "direct";
+  const tgt = active ? t[mode] : null;
   el.output.innerHTML = `
-    ${enabled ? `<div class="warn">⚠ Browser traffic is being routed through a proxy (${esc(describeProxy(status))}). Disable when you're done studying.</div>` : ""}
-    ${card("Proxy control", `<p class="muted small">Removes the need for FoxyProxy while studying. Uses chrome.proxy — affects the whole browser.</p>
-      <p class="small">Status: <b class="${enabled ? "bad-line" : "ok-line"}">${enabled ? describeProxy(status) : "system / off"}</b></p>
+    ${active ? `<div class="warn">⚠ <b>${PROXY_LABELS[mode]}</b> — all browser traffic is routed through ${esc(tgt.host)}:${esc(tgt.port)}. Click Direct when you're done.</div>` : ""}
+    ${card("Proxy Switcher", `<p class="muted small">Your FoxyProxy replacement. Routes Chrome's traffic — it does NOT intercept or modify anything (that's Burp/Caido's job).</p>
+      <p class="small">Status: <b class="${active ? "bad-line" : "ok-line"}">${PROXY_LABELS[mode]}</b>${active ? ` <span class="muted">→ ${esc(tgt.host)}:${esc(tgt.port)}</span>` : ""}</p>
       <div class="row">
-        <button id="pxCoach" class="btn primary">ON → WebPwn Coach (8088)</button>
-        <button id="pxBurp" class="btn">ON → Burp (8080)</button>
+        <button class="btn ${mode === "direct" ? "primary" : ""}" data-px="direct">Direct</button>
+        <button class="btn ${mode === "burp" ? "primary" : ""}" data-px="burp">Burp</button>
+        <button class="btn ${mode === "caido" ? "primary" : ""}" data-px="caido">Caido</button>
+        <button class="btn ${mode === "custom" ? "primary" : ""}" data-px="custom">Custom</button>
       </div>
-      <div class="row"><button id="pxOff" class="btn red">Proxy OFF (restore system)</button></div>`)}
-    ${card("Companion proxy", health.ok
-      ? `<p class="small ok-line">● reachable — ${health.captured} captured, ${health.paused ? "PAUSED" : "capturing"}${health.upstream ? ", upstream " + esc(health.upstream) : ""}</p>
-         <div class="row"><button id="pxPause" class="btn">${health.paused ? "Resume capture" : "Pause capture"}</button><button id="pxTraffic" class="btn">Open Traffic tab</button></div>
-         <p class="muted small" style="margin-top:6px">Allowlist: ${(health.allowlist || []).map(esc).join(", ")}</p>`
-      : `<p class="small bad-line">● not reachable at ${esc(state.companionUrl)}</p>
-         <p class="muted small">Start it:</p><div class="pre">cd companion && node proxy.js</div>`)}
-    ${card("HTTPS note", `<p class="muted small">MVP records HTTP fully. HTTPS is tunneled (CONNECT metadata only) — full bodies need a local CA cert (see companion/README). Use Burp as upstream for full HTTPS bodies.</p>`)}`;
-  bindEl("#pxCoach", () => setProxy("coach"));
-  bindEl("#pxBurp", () => setProxy("burp"));
-  bindEl("#pxOff", () => clearProxy());
-  bindEl("#pxPause", async () => { try { await fetch(state.companionUrl.replace(/\/$/, "") + "/pause", { method: "POST" }); } catch (_) {} renderProxy(); });
-  bindEl("#pxTraffic", () => { state.mode = "traffic"; [...el.tabs.children].forEach((t) => t.classList.toggle("active", t.dataset.mode === "traffic")); render(); });
+      <div class="row"><button id="pxDirect" class="btn red">Restore Direct</button></div>`)}
+    ${card("Targets (host / port)", `
+      ${proxyRow("burp", "Burp", t.burp)}
+      ${proxyRow("caido", "Caido", t.caido)}
+      ${proxyRow("custom", "Custom", t.custom)}
+      <div class="row"><button id="pxSave" class="btn primary">Save targets</button></div>
+      <p class="muted small" style="margin-top:6px">${bridgePort()} (the bridge) always stays Direct so its API isn't routed through the proxy.</p>`)}`;
+  el.output.querySelectorAll("[data-px]").forEach((b) => b.addEventListener("click", () => applyProxyMode(b.dataset.px)));
+  bindEl("#pxDirect", () => applyProxyMode("direct"));
+  bindEl("#pxSave", saveProxyTargets);
+}
+function proxyRow(key, label, t) {
+  return `<div class="lab">${label}</div><div class="row">
+    <input id="px_${key}_host" type="text" value="${esc(t.host)}" placeholder="host" style="flex:2 1 120px">
+    <input id="px_${key}_port" type="text" value="${esc(t.port)}" placeholder="port" style="flex:1 1 60px">
+  </div>`;
 }
 function bindEl(sel, fn) { const e = $(sel); if (e) e.addEventListener("click", fn); }
 
-function getProxyStatus() {
-  return new Promise((res) => {
-    try { chrome.proxy.settings.get({}, (d) => res(d)); } catch (_) { res(null); }
-  });
+async function saveProxyTargets() {
+  for (const k of ["burp", "caido", "custom"]) {
+    state.proxy[k + "Host"] = ($(`#px_${k}_host`).value || "").trim() || "127.0.0.1";
+    state.proxy[k + "Port"] = ($(`#px_${k}_port`).value || "").trim() || "8080";
+  }
+  await chrome.storage.local.set({ wpc_proxy: state.proxy });
+  el.statusMsg.textContent = "Targets saved.";
+  if (state.proxy.mode !== "direct") applyProxyMode(state.proxy.mode); else renderProxy();
 }
-function describeProxy(status) {
-  const v = status && status.value; if (!v) return "unknown";
-  if (v.mode === "pac_script") return v.pacScript && /8080/.test(v.pacScript.data || "") ? "Burp 8080" : "WebPwn Coach 8088";
-  return v.mode;
+
+function pacFor(host, port) {
+  const bp = bridgePort();
+  return `function FindProxyForURL(url, host){ if(url.indexOf('127.0.0.1:${bp}')>-1||url.indexOf('localhost:${bp}')>-1)return 'DIRECT'; return 'PROXY ${host}:${port}'; }`;
 }
-function pac(port) {
-  return `function FindProxyForURL(url, host){ if(url.indexOf('127.0.0.1:8088')>-1||url.indexOf('localhost:8088')>-1)return 'DIRECT'; return 'PROXY 127.0.0.1:${port}'; }`;
-}
-async function setProxy(which) {
-  const port = which === "burp" ? 8080 : 8088;
+async function applyProxyMode(mode) {
+  state.proxy.mode = mode;
+  await chrome.storage.local.set({ wpc_proxy: state.proxy });
   try {
-    await chrome.proxy.settings.set({ value: { mode: "pac_script", pacScript: { data: pac(port) } }, scope: "regular" });
-    el.statusMsg.textContent = `Proxy ON → ${which === "burp" ? "Burp 8080" : "Coach 8088"}. ⚠ all browser traffic routed.`;
+    if (mode === "direct") {
+      await chrome.proxy.settings.clear({ scope: "regular" });
+      el.statusMsg.textContent = "DIRECT — system proxy restored.";
+    } else {
+      const t = proxyTargets()[mode];
+      await chrome.proxy.settings.set({ value: { mode: "pac_script", pacScript: { data: pacFor(t.host, t.port) } }, scope: "regular" });
+      el.statusMsg.textContent = `${PROXY_LABELS[mode]} → ${t.host}:${t.port}. ⚠ all browser traffic routed.`;
+    }
   } catch (e) { el.statusMsg.textContent = "Proxy error: " + e.message; }
   renderProxy();
-}
-async function clearProxy() {
-  try { await chrome.proxy.settings.clear({ scope: "regular" }); el.statusMsg.textContent = "Proxy OFF — system settings restored."; }
-  catch (e) { el.statusMsg.textContent = "Error: " + e.message; }
-  renderProxy();
-}
-async function companionHealth() {
-  try { const r = await fetch(state.companionUrl.replace(/\/$/, "") + "/health"); return await r.json(); }
-  catch (_) { return { ok: false }; }
 }
 
 // ---- Settings ---------------------------------------------------------------
@@ -647,12 +691,12 @@ function renderSettings() {
       ${toggle("incCookies", "Cookie names", s.incCookies)}
       ${toggle("incStorage", "Storage key names", s.incStorage)}
       ${toggle("incImport", "Imported traffic", s.incImport)}`)}
-    ${card("Companion proxy URL", `<input id="setCompanion" type="text" value="${esc(state.companionUrl)}"><div class="row"><button id="setSave" class="btn primary">Save</button></div>`)}
+    ${card("Traffic bridge URL", `<p class="muted small">Where the Burp/Caido bridge listens (receive-only).</p><input id="setBridge" type="text" value="${esc(state.bridgeUrl)}"><div class="row"><button id="setSave" class="btn primary">Save</button></div>`)}
     ${card("AI backend & keys", `<p class="muted small">AI is optional and off by default. Keys are stored in extension storage. Configure it on the full options page.</p><div class="row"><button id="openOpts" class="btn">Open options</button></div>`)}
     ${card("Privacy", `<ul class="small"><li>Passwords are never collected.</li><li>Tokens/cookies/JWTs redacted by default.</li><li>Preview context before any send; nothing auto-sends.</li></ul>`)}`;
   el.output.querySelectorAll("[data-persona]").forEach((c) => c.addEventListener("click", () => { state.persona = c.dataset.persona; chrome.storage.local.set({ persona: state.persona }); markPersona(); renderSettings(); }));
   el.output.querySelectorAll("[data-toggle]").forEach((t) => t.addEventListener("change", () => { state.settings[t.dataset.toggle] = t.checked; chrome.storage.local.set({ wpc_settings: state.settings }); }));
-  $("#setSave").addEventListener("click", () => { state.companionUrl = $("#setCompanion").value.trim() || state.companionUrl; chrome.storage.local.set({ companionUrl: state.companionUrl }); el.statusMsg.textContent = "Saved."; });
+  $("#setSave").addEventListener("click", () => { state.bridgeUrl = $("#setBridge").value.trim() || state.bridgeUrl; chrome.storage.local.set({ bridgeUrl: state.bridgeUrl }); el.statusMsg.textContent = "Saved."; });
   $("#openOpts").addEventListener("click", () => chrome.runtime.openOptionsPage());
 }
 function toggle(key, label, checked) {

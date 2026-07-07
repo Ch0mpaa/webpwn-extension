@@ -136,6 +136,37 @@ storage indicator reports names only; `clear()` removes every overlay and the ba
 
 ---
 
+## Architecture v2 — Proxy Switcher + Traffic Bridge (see ARCHITECTURE.md)
+
+The original "companion forward-proxy that captures traffic" was replaced by two separate,
+smaller systems. WebPwn Coach never intercepts or modifies traffic.
+
+**Part 1 — Proxy Switcher (extension only).** The Proxy panel is a FoxyProxy replacement:
+`chrome.proxy` PAC modes for Direct / Burp / Caido / Custom, each with configurable
+host:port stored under `wpc_proxy`, a status chip (`DIRECT`/`BURP ACTIVE`/…), a Restore
+Direct button, and an active-mode warning. The PAC always returns `DIRECT` for the bridge's
+`127.0.0.1:<port>` so routing everything through Burp doesn't trap the bridge's own API
+calls. No companion needed for this.
+
+**Part 2 — Traffic Bridge (`companion/bridge.js`, receive-only).** Replaces the forward
+proxy (`proxy.js` deleted). Burp/Caido *push* a request to `POST /traffic` (JSON or raw
+HTTP); the extension polls `GET /traffic/recent` every 3s and streams it into the Traffic
+tab. `GET /traffic/:id` returns the redacted entry + `hasSensitive` + a local-only `raw`.
+Redacts Authorization/Cookie/Set-Cookie/X-API-Key/JWT/`password=`. The extension's
+per-request actions (Explain/Lens/Users-Objects/Next-Test/Evidence) are **local**; only the
+explicit **Analyze with ATLAS** button sends (redacted) data to the AI. `state.bridgeUrl`
+(migrated from the old `companionUrl`) points at it.
+
+Verified: proxy modes set/clear via `chrome.proxy` with bridge-port bypass; bridge
+POST(raw+JSON)/recent/detail/redaction/raw-kept-local; Traffic tab shows pushed requests
+live, gates AI behind Analyze, and Reveal-raw stays local.
+
+**Part 3 — Guided Step Flow: NOT YET BUILT.** Designed in ARCHITECTURE.md. Next pass:
+a "Session" surface as the default (Daily Objective → Business → Observe → Lens → Choose
+Tool → Validate → Evidence → Report → Interview → Debrief), one step at a time, driven by
+page context + selected bridge request + weak-area memory, with the current tabs demoted
+under "Tools".
+
 ## MVP expansion — side panel, Traffic, Memory, Proxy
 
 ### Side panel is now the primary UI

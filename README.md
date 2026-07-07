@@ -80,29 +80,46 @@ and QuickWash — with *why* you struggled and the likely missing prerequisite.
 
 ---
 
-## Companion proxy & Proxy Mode (optional)
+## Proxy Switcher — WebPwn Coach as a FoxyProxy replacement
 
-A tiny local **study proxy** removes the need for FoxyProxy while learning. It is **not**
-a Burp replacement and never intercepts/modifies requests.
+The **Proxy** panel replaces FoxyProxy for your study workflow. It only manages Chrome's
+proxy setting — it does **not** intercept or modify traffic (that's Burp/Caido's job).
+
+One-click modes with clear status (`DIRECT` / `BURP ACTIVE` / `CAIDO ACTIVE` /
+`CUSTOM ACTIVE`):
+
+- **Direct** — no proxy (Restore Direct button).
+- **Burp** — `127.0.0.1:8080` (configurable).
+- **Caido** — configurable host/port.
+- **Custom** — any host/port.
+
+A warning banner shows whenever a proxy mode is active. The traffic-bridge port is always
+kept `DIRECT` so its API isn't routed through the proxy. Uses the `chrome.proxy` API.
+
+## Traffic Bridge — bring Burp/Caido traffic into the coach
+
+WebPwn Coach is **not** a proxy and does not replace Burp/Caido, Repeater, or Intruder.
+Instead, a tiny **receive-only bridge** lets you send a selected request/response from
+Burp/Caido into the coach for explanation, Assessment-Lens mapping, and evidence.
 
 ```bash
 cd companion
-node proxy.js                 # 127.0.0.1:8088
-BURP_UPSTREAM=http://127.0.0.1:8080 node proxy.js   # forward to Burp/Caido
+node bridge.js                # 127.0.0.1:8088 (receive-only)
 ```
 
-In the **Proxy** panel: **Proxy ON → WebPwn Coach (8088)**, **ON → Burp (8080)**, or
-**Proxy OFF** (restores system settings). A warning shows whenever a proxy is active. The
-panel also shows companion health and a **pause capture** button, and links to the Traffic
-tab to browse captured requests.
+Send a request to it (copy/paste in the **Traffic** tab, a `POST /traffic` webhook, or —
+later — a Burp Java/Kotlin extension / Caido plugin / MCP server). The **Traffic** tab
+auto-polls the bridge and shows requests live; pick one and:
 
-The companion captures **only allowlisted study domains** (webpwn.me, portswigger /
-web-security-academy.net, hackthebox.com, owasp.org, localhost, 127.0.0.1, juice-shop) and
-**redacts** `Authorization`, `Cookie`, `Set-Cookie`, `X-API-Key`, JWTs, and `password=`
-fields before storing. **HTTPS**: the MVP records HTTP fully; HTTPS `CONNECT` is tunneled
-and only its metadata is recorded (full bodies need a local CA cert — see
-`companion/README.md`, or use Burp as the upstream). See `companion/README.md` for the
-local API (`/health`, `/traffic`, `/traffic/:id`, `DELETE /traffic`, `/pause`).
+- **Explain / Map to Lens / Users-Objects / Next Test / Evidence** run **locally** (nothing
+  sent anywhere).
+- **✦ Analyze with ATLAS** sends the **redacted** request to the AI — **only when you
+  click it**.
+
+The bridge **redacts** `Authorization`, `Cookie`, `Set-Cookie`, `X-API-Key`, JWTs and
+`password=` by default, keeps a **local-only** raw copy for "Reveal raw", and flags entries
+that contain sensitive headers. API: `/health`, `POST /traffic`, `/traffic/recent`,
+`/traffic/:id`, `DELETE /traffic` — see `companion/README.md`. Architecture: `ARCHITECTURE.md`.
 
 ---
 

@@ -1,54 +1,56 @@
-# WebPwn Coach — Companion Proxy
+# WebPwn Coach — Traffic Bridge
 
-A tiny **study proxy** (no dependencies) that lets the extension show you real traffic
-while you learn. It is **not** a Burp replacement and does not intercept/modify requests.
+A tiny **receive-only** service (no dependencies). Burp/Caido stay your intercepting proxy
+and Repeater/Intruder — this bridge only *receives* a request you choose to send it, so
+WebPwn Coach can teach from it. **It is not a proxy and never modifies traffic.**
+
+> Routing your browser to Burp/Caido is a separate thing — do that from the extension's
+> **Proxy** panel (the Proxy Switcher), not here.
 
 ## Run
 
 ```bash
 cd companion
-node proxy.js                 # listens on http://127.0.0.1:8088
-# forward everything to Burp/Caido as an upstream:
-BURP_UPSTREAM=http://127.0.0.1:8080 node proxy.js
+node bridge.js            # listens on http://127.0.0.1:8088
 ```
 
-Then in the extension's **Proxy** panel click **Proxy ON → WebPwn Coach**, or point your
-browser/FoxyProxy at `127.0.0.1:8088`.
+## Send a request to it
 
-## What it captures
+Any of these work (MVP → future):
 
-For **allowlisted study domains only** (webpwn.me, portswigger/web-security-academy.net,
-hackthebox.com, owasp.org, localhost, 127.0.0.1, juice-shop):
+- **Copy/paste** — paste a raw request/response into the extension's Traffic tab.
+- **Webhook / curl** — push raw HTTP:
+  ```bash
+  curl -X POST -H 'content-type: text/plain' \
+       --data-binary @request.txt http://127.0.0.1:8088/traffic
+  ```
+- **JSON** — structured push:
+  ```bash
+  curl -X POST -H 'content-type: application/json' http://127.0.0.1:8088/traffic \
+    -d '{"method":"POST","url":"https://lab/login","reqHeaders":{"Cookie":"session=x"},
+         "reqBody":"username=a&password=b","status":200,"respBody":"Invalid username"}'
+  ```
+- **Later**: a Burp Java/Kotlin extension and a Caido plugin will add a one-click
+  "Send to WebPwn Coach"; an MCP server will expose `list_recent_requests / get_request /
+  explain_request / create_evidence`.
 
-- method, URL, host, status, content-type
-- request/response headers and a body **preview** (first ~2 KB)
-
-It **redacts by default**: `Authorization`, `Cookie`, `Set-Cookie`, `X-API-Key`,
-`Proxy-Authorization`, any JWT-looking value, and `password=` fields in bodies.
-
-## Local API
+## API
 
 | Method | Path | Purpose |
 |---|---|---|
-| GET | `/health` | status, paused flag, capture count, upstream, allowlist |
-| GET | `/traffic` | list captured entries (summaries) |
-| GET | `/traffic/:id` | full entry (redacted) |
-| DELETE | `/traffic` | clear all captured traffic |
-| POST | `/pause` | toggle capture (`{"paused":true}` to force a state) |
+| GET | `/health` | `{ ok, service:"webpwn-coach-bridge", count }` |
+| POST | `/traffic` | receive a request/response (JSON or raw HTTP text) |
+| GET | `/traffic/recent` | list received requests (summaries) |
+| GET | `/traffic/:id` | full (redacted) entry + `hasSensitive` + local `raw` |
+| DELETE | `/traffic` | clear |
 
-CORS is open (`*`) because it only binds to loopback for local dev.
-
-## HTTPS
-
-The MVP does **not** do TLS interception. HTTPS `CONNECT` requests are tunneled and only
-their **metadata** (host:port) is recorded — bodies stay encrypted. Full HTTPS body
-visibility would require generating and trusting a local CA certificate; that's
-intentionally out of scope for the MVP. Use HTTP targets (or Burp as upstream) for full
-body visibility while studying.
+CORS is open (`*`) — it binds to loopback only.
 
 ## Safety
 
-- Loopback only (`127.0.0.1`), never `0.0.0.0`.
-- Non-allowlisted domains are proxied but **not stored**.
-- Passwords are masked; auth material is redacted before storage.
-- A **pause** control stops capture without turning the proxy off.
+- `Authorization`, `Cookie`, `Set-Cookie`, `X-API-Key`, JWTs and `password=` are **redacted**
+  in everything the extension shows or sends to AI.
+- A **local-only** raw copy is kept so you can inspect the real request via the extension's
+  "Reveal raw (local)" — it is never sent anywhere.
+- The extension marks entries that contain sensitive headers, and **only sends to AI when
+  you click Analyze**.
