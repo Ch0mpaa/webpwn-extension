@@ -346,15 +346,40 @@ async function pollCompanion() {
 function explainPasted(text) {
   text = (text || "").trim();
   if (!text) return;
+  // WebPwn traffic JSON (Burp extension → "Copy as WebPwn JSON" fallback).
+  let obj = null;
+  if (text[0] === "{") { try { obj = JSON.parse(text); } catch (_) {} }
+  if (obj && (obj.method || obj.url) && (obj.reqHeaders || obj.path || obj.url)) {
+    const parsed = companionToParsed(normalizeWebpwn(obj));
+    const sensitive = obj.redacted === "true" || !!(obj.reqHeaders && (obj.reqHeaders.Authorization || obj.reqHeaders.Cookie || obj.reqHeaders.authorization || obj.reqHeaders.cookie));
+    state.traffic.selected = { source: "paste-json", parsed, sensitive, raw: obj.raw || "", analyzed: false };
+    el.statusMsg.textContent = `Imported ${obj.method || ""} ${(obj.path || obj.url || "").slice(0, 40)} from Burp.`;
+    return renderTraffic();
+  }
   const kind = WPC.explain.classify(text);
   if (kind === "http") {
-    const parsed = WPC.http.parseText(text);
-    state.traffic.selected = { source: "paste", parsed };
+    state.traffic.selected = { source: "paste", parsed: WPC.http.parseText(text) };
   } else {
-    const art = WPC.explain.explainArtifact(text);
-    state.traffic.selected = { source: "paste", artifact: art };
+    state.traffic.selected = { source: "paste", artifact: WPC.explain.explainArtifact(text) };
   }
   renderTraffic();
+}
+
+// Map a WebPwn traffic JSON object to the shape companionToParsed expects.
+function normalizeWebpwn(o) {
+  let host = "";
+  try { host = new URL(o.url, "http://x").host; } catch (_) {}
+  return {
+    method: o.method || "", url: o.url || o.path || "", path: o.path || "", host,
+    reqHeaders: lowerKeys(o.reqHeaders), reqBody: o.reqBody || "",
+    status: o.status || null, contentType: (o.respHeaders && (o.respHeaders["Content-Type"] || o.respHeaders["content-type"])) || "",
+    respHeaders: o.respHeaders || {}, respBody: o.respBody || "",
+  };
+}
+function lowerKeys(h) {
+  const out = {};
+  for (const k of Object.keys(h || {})) out[k.toLowerCase()] = h[k];
+  return out;
 }
 
 function importHar(e) {

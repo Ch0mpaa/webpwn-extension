@@ -23,21 +23,56 @@ A prebuilt JAR is also committed at `dist/webpwn-coach-burp-1.0.0.jar`.
 
 1. Start the bridge: `node ../companion/bridge.js` (listens on `127.0.0.1:8088`).
 2. Burp → **Extensions → Installed → Add** → Extension type **Java** → select the JAR.
-3. You'll see `WebPwn Coach Bridge loaded` in the extension's Output.
+3. The **Output** log should show, loudly:
+   `loaded` → `context menu registered` → `tab registered` → `ready`.
+4. A new top-level **WebPwn Coach** tab appears in Burp.
 
-## Use
+## Two ways to send — the tab never depends on the right-click menu
 
-Right-click a request/response in **Proxy → HTTP history**, **Proxy → Intercept**, or
-**Repeater**, then choose:
+**A. Right-click** a request in **Proxy → HTTP history / Intercept** or **Repeater** →
+**Send to WebPwn Coach (redacted)** / **(raw, local)** / **Copy as WebPwn JSON**.
 
-- **Send to WebPwn Coach (redacted)** — sensitive values are stripped *before leaving Burp*.
-- **Send to WebPwn Coach (raw, local)** — full values, plus a raw dump kept **local-only**
-  in the bridge for the extension's "Reveal raw" (never sent to AI).
+**B. The WebPwn Coach tab** (use this if the context menu doesn't show):
+- **Test Bridge** — GET `/health`, shows reachability + last error.
+- **Send latest proxy request** — sends the most recent Proxy/HTTP-history request. (This
+  needs nothing selected — it reads `api.proxy().history()`.)
+- **Send selected request** — sends the last request you right-clicked (disabled with an
+  explanation until you've right-clicked one).
+- **Copy latest as WebPwn JSON** — clipboard fallback if the bridge is down.
+
+The tab also shows: extension loaded status, bridge URL (editable), bridge health, send
+count, last sent, last error, and the captured selection.
+
+**Redacted** strips `Authorization` / `Cookie` / `Set-Cookie` / `X-API-Key` / JWTs /
+`password=` / API keys *before leaving Burp*. **Raw** keeps a **local-only** raw dump in the
+bridge for the extension's "Reveal raw" (never sent to AI).
 
 The Chrome extension's **Traffic** tab polls the bridge and shows what arrives, tagged with
-the Burp tool source (Proxy/History or Repeater/Editor). Selecting a request runs local
-actions (Explain / Map to Lens / Users-Objects / Next Test / Evidence); **only "✦ Analyze
-with ATLAS" sends (redacted) data to the AI, and only when you click it.**
+the Burp tool source. Local actions (Explain / Map to Lens / Users-Objects / Next Test /
+Evidence) never leave the browser; **only "✦ Analyze with ATLAS" sends (redacted) data to
+the AI, and only when you click it.**
+
+## Manual validation
+
+1. `node companion/bridge.js`  (leave running).
+2. Load the JAR in Burp → confirm the **WebPwn Coach** tab appears and Output shows
+   `context menu registered` + `tab registered`.
+3. Open the **WebPwn Coach** tab → click **Test Bridge** → expect `● reachable (HTTP 200)`.
+4. Route Chrome through Burp (extension **Proxy** tab → **Burp**), load a lab page so it
+   enters Proxy history.
+5. Click **Send latest proxy request** → Output shows `POST … HTTP 200`, send count goes up.
+6. In Chrome, open the extension **Traffic** tab → the request appears (tagged
+   `Proxy/History`). Click it → **Analyze with ATLAS** stays a manual click.
+
+**If the right-click menu is missing:** everything above still works from the tab. As a last
+resort, **Copy latest as WebPwn JSON** and paste it into the Chrome extension → Traffic tab
+→ **Or import manually**.
+
+## Loud logging
+
+Every step logs to the extension's Output/Errors: `loaded`, `context menu registered`,
+`tab registered`, health-check result, selected-message count, latest-request found, POST
+status, and full exception stack traces.
 
 ## What it sends
 
