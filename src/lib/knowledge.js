@@ -1268,6 +1268,95 @@
   WPC.KNOWLEDGE = K;
   WPC.getConcept = (id) => K.find((c) => c.id === id) || null;
 
+  // Mission briefs — the "why am I looking at this page" framing. These speak
+  // in consultant/objective terms, NOT taxonomy. Keyed by concept id.
+  const MISSIONS = {
+    "rate-limit": {
+      fear: "The client believes attackers can guess their users' usernames and passwords.",
+      firstJob: "First, prove whether the application leaks which usernames are VALID — before any brute-forcing.",
+      notYet: "Your first job is not to brute-force passwords. It's to find the oracle that tells you a user exists.",
+      lookFor: ["Different error messages (\"Invalid username\" vs \"Invalid password\")", "Different response sizes or timing", "Different status codes or redirects"],
+      prove: "Before touching Burp: can you make the app tell you a username exists?",
+    },
+    idor: {
+      fear: "The client worries one customer can read or change another customer's data.",
+      firstJob: "First, find where the app references an object by an id you control.",
+      notYet: "Don't change ids randomly yet — first map which requests carry an object reference.",
+      lookFor: ["Ids in the URL, query, or body (id=, /1023/, .pdf)", "Whether the id is predictable or enumerable", "Whether the response changes with the id"],
+      prove: "Before Burp: with two accounts you own, can you reach account B's object from account A?",
+    },
+    "access-control": {
+      fear: "The client worries low-privilege users can reach admin actions.",
+      firstJob: "First, map which actions are meant for which role, and where the server enforces it.",
+      notYet: "Don't hunt for admin URLs blindly — decide who SHOULD be allowed, then test the gap.",
+      lookFor: ["Actions hidden in the UI but not the server", "Role decided client-side or in a tamperable value", "Sensitive verbs: delete, promote, admin"],
+      prove: "Before Burp: can a low-priv session perform a high-priv action?",
+    },
+    sqli: {
+      fear: "The client worries their database can be read or bypassed through the app.",
+      firstJob: "First, find an input that reaches a query and get a single reliable signal that it does.",
+      notYet: "Don't paste payload lists. Form a hypothesis about the query, then send ONE probe.",
+      lookFor: ["Inputs likely feeding a query (search, id, login)", "Errors, boolean, or timing changes on a lone quote", "Reflected data that mirrors DB content"],
+      prove: "Before Burp: can you make the app behave differently with one changed character?",
+    },
+    xss: {
+      fear: "The client worries an attacker can run script in another user's browser.",
+      firstJob: "First, plant a harmless marker and find exactly WHERE and in what context it lands.",
+      notYet: "Don't fire alert(1) blindly — context decides everything.",
+      lookFor: ["Your input reflected into HTML / attribute / JS", "Whether it's encoded", "Reflected vs stored vs DOM"],
+      prove: "Before Burp: can you follow your input from source to the exact output context?",
+    },
+    csrf: {
+      fear: "The client worries another site can act as their logged-in users.",
+      firstJob: "First, find a state-changing action and ask what — if anything — an attacker couldn't guess.",
+      notYet: "Don't build an exploit page yet — first confirm the token is actually validated.",
+      lookFor: ["State-changing requests relying only on cookies", "A token that may not be validated", "SameSite on the session cookie"],
+      prove: "Before Burp: could a foreign origin trigger this exact action?",
+    },
+    ssrf: {
+      fear: "The client worries the server can be turned into a proxy into its own network.",
+      firstJob: "First, find a feature where the SERVER fetches a URL you influence.",
+      notYet: "Don't spray internal ranges yet — first confirm you control an outbound fetch.",
+      lookFor: ["Features fetching a URL (webhook, import, preview, PDF)", "Whether you can point it at a callback you own", "What the server can reach that you can't"],
+      prove: "Before Burp: can you prove the server fetched a URL you chose?",
+    },
+    jwt: {
+      fear: "The client worries a user can forge their identity or role.",
+      firstJob: "First, decode the token and understand what it asserts and who verifies it.",
+      notYet: "Don't tamper claims yet — first read the header, claims, alg, and expiry.",
+      lookFor: ["alg in the header (none / RS256 / HS256)", "role/admin/sub claims", "expiry and who holds the verification key"],
+      prove: "Before Burp: what exactly is this token claiming about you, and who checks it?",
+    },
+    session: {
+      fear: "The client worries a session can be stolen, fixed, or reused after logout.",
+      firstJob: "First, find the ONE value that means \"logged-in me\".",
+      notYet: "Don't attack it yet — first watch its whole lifecycle: login, logout, timeout.",
+      lookFor: ["The cookie/token that proves you're logged in", "Whether it rotates on login", "Whether logout actually invalidates it server-side"],
+      prove: "Before Burp: does an old session id still work after logout?",
+    },
+    "business-logic": {
+      fear: "The client worries someone can abuse the rules of their workflow.",
+      firstJob: "First, model what the workflow is supposed to guarantee.",
+      notYet: "Don't look for injection — look for a broken assumption about the user.",
+      lookFor: ["Multi-step flows (checkout, transfer)", "Values that carry meaning (price, quantity, status)", "Steps that assume the previous one happened honestly"],
+      prove: "Before Burp: which value does the app trust you to send truthfully?",
+    },
+  };
+
+  /** Get a mission brief for a concept, with a generic fallback from its lens. */
+  WPC.getMission = function (id, concept) {
+    if (MISSIONS[id]) return MISSIONS[id];
+    const c = concept || WPC.getConcept(id);
+    if (!c) return null;
+    return {
+      fear: `The client is worried about: ${c.lens.what.toLowerCase()}`,
+      firstJob: `First, understand where ${c.name.replace(/\s*\(.*\)/, "").toLowerCase()} could occur here.`,
+      notYet: "Don't reach for payloads — build the hypothesis first.",
+      lookFor: c.identify.slice(0, 3),
+      prove: c.coach[0],
+    };
+  };
+
   /**
    * Detect concepts present in a blob of text, ranked by match strength.
    * @param {string} text

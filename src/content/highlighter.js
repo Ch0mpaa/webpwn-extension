@@ -24,6 +24,17 @@
   const ID_HINT = /\b(id|user|account|order|receipt|invoice|customer|token|uuid|ref|number|no)\b/i;
   const DESTRUCTIVE = /\b(delete|remove|destroy|drop|pay|purchase|buy|checkout|transfer|withdraw|admin|promote|deactivate|revoke|ban|reset)\b/i;
   const USER_CTX = /(logged in as|signed in as|current user|my account|your account|welcome,?\s+[\w.@-]+|hello,?\s+[\w.@-]+)/i;
+  const ERROR_TEXT = /(invalid|incorrect|does not exist|no such|not found|failed|wrong|denied|unauthori|already (taken|exists)|try again)/i;
+  function labelFor(inp) {
+    try {
+      if (inp.id) {
+        const l = document.querySelector(`label[for="${CSS.escape(inp.id)}"]`);
+        if (l) return l.textContent || "";
+      }
+      const wrap = inp.closest("label");
+      return wrap ? wrap.textContent || "" : "";
+    } catch (_) { return ""; }
+  }
   const UUID = /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/i;
   const ID_IN_URL = /([?&/](id|user|account|order|receipt|invoice|customer|uid|pid|oid)[=/][A-Za-z0-9._-]+)|\/\d{2,}(\b|\/)/i;
   const LABELLED_ID = /\b(order|receipt|invoice|account|user|customer|transaction|ticket|reference)\s*(id|number|no|ref|#)?\s*[:#]?\s*[A-Za-z0-9-]{2,}\b/i;
@@ -60,21 +71,35 @@
         stateChanging ? "suspect" : colorFor("get-form", "observe"));
     });
 
-    // Inputs — password = trust boundary; id-ish name = object-id; else input.
+    const hasPassword = !!document.querySelector('input[type=password]');
+
+    // Inputs — password / username / id-ish / generic. Ask a question of each.
     document.querySelectorAll("input, select, textarea").forEach((inp) => {
       const type = (inp.getAttribute("type") || inp.tagName).toLowerCase();
-      const nameish = [inp.name, inp.id, inp.getAttribute("placeholder")].filter(Boolean).join(" ");
-      if (type === "password") return push(targets, inp, "password", "trust");
+      const nameish = [inp.name, inp.id, inp.getAttribute("placeholder"), labelFor(inp)].filter(Boolean).join(" ");
+      if (type === "password") return push(targets, inp, "password", "suspect");
       if (type === "hidden" && !ID_HINT.test(nameish)) return; // skip noise
+      if (/\b(user(name)?|email|login|e-mail|account)\b/i.test(nameish))
+        return push(targets, inp, "username-input", "suspect");
       if (ID_HINT.test(nameish)) return push(targets, inp, "object-id", colorFor("object-id", "observe"));
       push(targets, inp, "input", colorFor("input", "observe"));
     });
 
-    // Buttons — destructive = impact; else action.
+    // Buttons — login (identity moment) / destructive / generic action.
     document.querySelectorAll("button, input[type=submit], input[type=button], [role=button]").forEach((b) => {
       const txt = (b.value || b.textContent || b.getAttribute("aria-label") || "").trim();
+      if (/\b(log ?in|sign ?in|log ?on|authenticate)\b/i.test(txt) || (hasPassword && /submit|continue|go/i.test(txt)))
+        return push(targets, b, "login-button", "trust");
       if (DESTRUCTIVE.test(txt)) return push(targets, b, "action-button", "danger");
       push(targets, b, "button", "observe");
+    });
+
+    // Error / status messages — the classic enumeration oracle.
+    document.querySelectorAll("body *:not(script):not(style)").forEach((el) => {
+      if (targets.filter((t) => t.category === "error-text").length >= 3) return;
+      if (el.children.length > 0) return; // leaf-ish
+      const t = (el.textContent || "").trim();
+      if (t.length > 2 && t.length < 90 && ERROR_TEXT.test(t)) push(targets, el, "error-text", "suspect");
     });
 
     // Links — carrying an object id = object-id; else structural link.
@@ -214,7 +239,7 @@
       label.className = "wpc-hl-label";
       label.style.setProperty("--wpc-c", hex);
       const cat = document.createElement("b");
-      cat.textContent = t.category.replace(/-/g, " ");
+      cat.textContent = t.category === "fluff" ? "✕" : "?";
       label.appendChild(cat);
       label.appendChild(document.createTextNode(" " + teachFor(t.category, plan.level, t.colorKey)));
       box.appendChild(label);

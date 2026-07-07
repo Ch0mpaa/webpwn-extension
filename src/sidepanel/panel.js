@@ -130,6 +130,7 @@ async function loadContext() {
 // ---- Router -----------------------------------------------------------------
 
 function render() {
+  if (state.traffic.poll) { clearInterval(state.traffic.poll); state.traffic.poll = null; }
   el.aiBtn.classList.toggle("hidden", !(state.llmEnabled && (state.mode === "tldr" || state.mode === "traffic")));
   const need = ["tldr", "lens", "elements", "highlight"];
   if (need.includes(state.mode) && !state.clean) {
@@ -156,10 +157,22 @@ function renderTLDR() {
   const labBanner = lab && lab.isLab
     ? `<div class="warn">🧪 <b>Hands-on lab${lab.difficulty ? " · " + esc(lab.difficulty) : ""}${lab.status ? " · " + esc(lab.status) : ""}.</b> You're in the arena — I'll coach you through it, I won't solve it. Work the methodology, not the payload.</div>`
     : "";
+  const m = d.mission;
+  const missionCard = m ? `
+    <div class="card mission">
+      <h3>🎯 Your mission here</h3>
+      <p class="mission-fear">${esc(m.fear)}</p>
+      <p><b class="ok-line">First job:</b> ${esc(m.firstJob)}</p>
+      <p class="muted small">${esc(m.notYet)}</p>
+      <div class="lab" style="margin-top:6px">You're looking for</div>
+      <ul>${m.lookFor.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>
+      <p class="mission-prove">❓ ${esc(m.prove)}</p>
+    </div>` : "";
   el.output.innerHTML = `
     ${labBanner}
-    ${chips ? `<div class="chips">${chips}</div>` : ""}
-    ${card("30-second summary", `<p>${esc(d.summary)}</p>`)}
+    ${missionCard}
+    <p class="muted small" style="margin:-4px 0 8px">Topic (for reference): ${chips || esc(d.lensSource)}</p>
+    ${card("In plain English", `<p>${esc(d.summary)}</p>`)}
     ${card("Why it matters (consultant)", `<p>${esc(d.whyItMatters)}</p>`)}
     ${card(`Assessment Lens · ${esc(d.lensSource)}`, lensTable(fullLens(d.lens, d.lensSource)))}
     ${card("Mental model", `<div class="mental">🧭 ${esc(d.mentalModel)}</div>`)}
@@ -292,20 +305,39 @@ async function clearHighlight() {
 function renderTraffic() {
   const sel = state.traffic.selected;
   el.output.innerHTML = `
-    ${card("Traffic import", `<p class="muted small">Paste a raw HTTP request/response (from Burp/Caido), or a JWT/JSON/SQL/code snippet.</p>
-      <textarea id="tIn" placeholder="Paste HTTP request/response or a snippet…"></textarea>
+    ${card("Live traffic", `<p class="muted small">Turn the proxy on (Proxy tab), browse the lab — requests appear here automatically. Click one and I'll walk it. No paste.</p>
+      <div id="tStatus" class="small muted">checking companion…</div>
+      <div id="tList" class="tlist" style="margin-top:8px"></div>
+      <div class="row"><button id="tRefresh" class="btn">Refresh now</button><button id="tClear" class="btn red">Clear captured</button></div>`)}
+    ${card("Or import manually", `<details><summary class="small muted">Paste a raw HTTP request/response, or a JWT / JSON / SQL / code snippet</summary>
+      <textarea id="tIn" placeholder="Paste HTTP request/response or a snippet…" style="margin-top:8px"></textarea>
       <div class="row"><button id="tExplain" class="btn primary">Explain</button>
-      <label class="btn" style="text-align:center">Import HAR<input id="harIn" type="file" accept=".har,application/json" hidden></label></div>`)}
-    ${card("From companion proxy", `<p class="muted small">Requires the local proxy (Proxy tab → start companion).</p>
-      <div class="row"><button id="tLoad" class="btn">Load captured traffic</button><button id="tClear" class="btn red">Clear captured</button></div>
-      <div id="tList" class="tlist" style="margin-top:8px"></div>`)}
+      <label class="btn" style="text-align:center">Import HAR<input id="harIn" type="file" accept=".har,application/json" hidden></label></div></details>`)}
     <div id="tResult"></div>`;
   $("#tExplain").addEventListener("click", () => explainPasted($("#tIn").value));
   $("#harIn").addEventListener("change", importHar);
-  $("#tLoad").addEventListener("click", loadCompanion);
+  $("#tRefresh").addEventListener("click", () => pollCompanion());
   $("#tClear").addEventListener("click", clearCompanion);
   if (state.traffic.companion.length) renderCompanionList();
   if (sel) renderTrafficResult(sel);
+  // Auto-poll the companion so proxied traffic streams in live.
+  pollCompanion();
+  state.traffic.poll = setInterval(() => pollCompanion(), 3000);
+}
+
+async function pollCompanion() {
+  const base = state.companionUrl.replace(/\/$/, "");
+  const st = $("#tStatus");
+  try {
+    const r = await fetch(base + "/traffic");
+    const data = await r.json();
+    const prev = state.traffic.companion.length;
+    state.traffic.companion = data.items || [];
+    if (st) st.innerHTML = `<span class="ok-line">● companion connected</span> — ${state.traffic.companion.length} request(s) captured`;
+    if (state.traffic.companion.length !== prev || !document.querySelector("#tList .titem")) renderCompanionList();
+  } catch (_) {
+    if (st) st.innerHTML = `<span class="bad-line">● companion not running.</span> Start it, then Proxy tab → ON. <span class="mono">node companion/proxy.js</span>`;
+  }
 }
 
 function explainPasted(text) {
@@ -434,28 +466,46 @@ function artifactHtml(a) {
 
 async function renderMemory() {
   const prof = await WPC.memory.profile();
-  const bars = prof.rows.map((r) => {
-    const pct = Math.max(6, Math.min(100, 50 + r.score * 12));
-    const color = r.level === "Solid" ? "var(--green)" : r.level === "Weak" ? "var(--red)" : r.level === "Practicing" ? "var(--amber)" : "var(--gray)";
-    return `<div class="skill"><div class="top"><span>${esc(r.skill)}</span><span class="lvl-${r.level}">${r.level}</span></div><div class="bar"><span style="width:${pct}%;background:${color}"></span></div></div>`;
-  }).join("");
+  const practised = prof.rows.filter((r) => r.reps > 0 || r.hints > 0 || r.seen > 0);
+  const shown = practised.length ? practised : prof.rows.slice(0, 6);
+  const rows = shown.map((r) => {
+    const acc = r.accuracy === null ? "—" : Math.round(r.accuracy * 100) + "%";
+    const iv = r.interview === null ? "—" : r.interview + "%";
+    const barPct = r.reps === 0 ? 4 : Math.max(6, Math.min(100, (r.accuracy || 0) * 100));
+    const color = r.level === "Solid" ? "var(--green)" : r.level === "Struggling" ? "var(--red)" : r.level === "Practicing" ? "var(--amber)" : "var(--gray)";
+    return `<div class="skill"><div class="top"><span>${esc(r.skill)}</span><span class="lvl-${r.level}">${r.level}</span></div>
+      <div class="bar"><span style="width:${barPct}%;background:${color}"></span></div>
+      <div class="small muted mono">${r.reps} rep(s) · acc ${acc} · ${r.hints} hint(s) · interview ${iv}</div></div>`;
+  }).join("") || `<p class="muted small">Nothing practised yet. Do a rep to start earning a profile.</p>`;
   const events = prof.events.slice(0, 12).map((e) => `<div class="small muted">• ${esc(e.type)} — ${esc(e.skill)}${e.note ? " (" + esc(e.note) + ")" : ""}</div>`).join("") || `<p class="muted small">No activity yet.</p>`;
   const skillOpts = WPC.memory.SKILLS.map((s) => `<option value="${esc(s)}">${esc(s)}</option>`).join("");
   el.output.innerHTML = `
-    ${card("Skill profile", `<p class="muted small">Weakest first. Struggle (hints/mistakes/missed) lowers a skill; reps raise it.</p>${bars}`)}
-    ${card("Log a moment", `<div class="lab">Skill</div><select id="mSkill">${skillOpts}</select>
+    ${card("Skill profile — earned, not guessed", `<p class="muted small">Competence comes only from completed reps + accuracy. Page views don't count.</p>${rows}`)}
+    ${card("Log a rep (be honest — this is how you level up)", `<div class="lab">Skill</div><select id="mSkill">${skillOpts}</select>
       <div class="row">
-        <button class="btn" data-log="mistake">I made a mistake</button>
-        <button class="btn" data-log="hint-requested">I needed a hint</button>
-        <button class="btn" data-log="interview-missed">Missed an interview Q</button>
-        <button class="btn" data-log="report-written">Wrote a report</button>
-      </div>`)}
+        <button class="btn" data-rep="1">✓ Solved it unaided</button>
+        <button class="btn" data-log="hint-requested">Solved with a hint</button>
+        <button class="btn red" data-rep="0">✗ Couldn't solve it</button>
+      </div>
+      <div class="row"><button class="btn" data-log="report-written">Wrote a report</button></div>
+      <div class="lab" style="margin-top:8px">Interview answer (0–100)</div>
+      <div class="row"><input id="mIv" type="text" placeholder="e.g. 70" style="max-width:90px"><button id="mIvBtn" class="btn">Log interview</button></div>`)}
     ${card("Recent activity", events)}
     ${card("", `<div class="row"><button id="mReset" class="btn red">Reset memory</button></div>`)}`;
+  el.output.querySelectorAll("[data-rep]").forEach((b) => b.addEventListener("click", async () => {
+    await WPC.memory.record({ type: "rep-completed", correct: b.dataset.rep === "1", skill: $("#mSkill").value });
+    el.statusMsg.textContent = "Rep logged."; renderMemory();
+  }));
   el.output.querySelectorAll("[data-log]").forEach((b) => b.addEventListener("click", async () => {
     await WPC.memory.record({ type: b.dataset.log, skill: $("#mSkill").value });
     el.statusMsg.textContent = "Logged."; renderMemory();
   }));
+  $("#mIvBtn").addEventListener("click", async () => {
+    const v = parseInt($("#mIv").value, 10);
+    if (isNaN(v)) { el.statusMsg.textContent = "Enter a 0–100 score."; return; }
+    await WPC.memory.record({ type: "interview", score: v, skill: $("#mSkill").value });
+    el.statusMsg.textContent = "Interview logged."; renderMemory();
+  });
   $("#mReset").addEventListener("click", async () => { await WPC.memory._reset(); renderMemory(); });
 }
 
@@ -500,7 +550,7 @@ async function askSend(text) {
     try {
       const resp = await chrome.runtime.sendMessage(Object.assign(
         { type: "WPC_LLM", mode: "chat", question: text, context: state.clean || {} },
-        llmMeta()));
+        await llmMeta()));
       state.chat.pop();
       state.chat.push({ role: "coach", text: resp && resp.ok ? "✦ " + resp.text : "✦ AI unavailable: " + ((resp && resp.error) || "error") });
     } catch (e) { state.chat.pop(); state.chat.push({ role: "coach", text: "✦ AI error: " + e.message }); }
@@ -612,7 +662,7 @@ function toggle(key, label, checked) {
 // ---- AI enrichment ----------------------------------------------------------
 
 // Common page signals sent to the AI so it "sees what I see" and coaches to it.
-function llmMeta() {
+async function llmMeta() {
   let conceptName = null;
   try {
     const f = WPC.detectConceptsForContext(state.clean || {}, 1);
@@ -621,12 +671,27 @@ function llmMeta() {
   const keys = state.settings.incStorage && state.storage
     ? (state.storage.local || []).concat(state.storage.session || []).slice(0, 10)
     : [];
+  let memory = null;
+  try {
+    const prof = await WPC.memory.profile();
+    const weak = prof.rows.filter((r) => r.reps > 0 && r.level !== "Solid").slice(0, 3)
+      .map((r) => `${r.skill} (${r.reps} reps, ${r.accuracy === null ? "—" : Math.round(r.accuracy * 100) + "%"})`);
+    if (weak.length) memory = weak.join("; ");
+  } catch (_) {}
+  let request = null;
+  const sel = state.traffic.selected;
+  if (sel && sel.parsed && sel.parsed.request) {
+    const rq = sel.parsed.request;
+    request = `${rq.method} ${rq.path}${rq.query || ""} · params: ${(rq.params || []).map((p) => p.name).join(", ") || "none"} · status: ${sel.parsed.response ? sel.parsed.response.status : "?"}`;
+  }
   return {
     persona: state.persona,
     siteLabel: state.site.label,
     lab: state.raw ? state.raw.lab : null,
     concept: conceptName,
     storageKeys: keys,
+    memory,
+    request,
   };
 }
 
@@ -639,7 +704,7 @@ async function enrichAI() {
   try {
     const resp = await chrome.runtime.sendMessage(Object.assign(
       { type: "WPC_LLM", mode: state.mode === "traffic" ? "tldr" : state.mode, context: state.clean },
-      llmMeta()));
+      await llmMeta()));
     box.innerHTML = `<h3>✦ AI Mentor</h3><pre class="pre">${esc(resp && resp.ok ? resp.text : (resp && resp.error) || "failed")}</pre>`;
   } catch (e) { box.innerHTML = `<h3>✦ AI Mentor</h3><p class="muted">${esc(e.message)}</p>`; }
   el.statusMsg.textContent = "";

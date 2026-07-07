@@ -106,65 +106,90 @@
       }
     });
   }
+  function blankSkill() {
+    return { seen: 0, reps: 0, correct: 0, hints: 0, reports: 0, iSum: 0, iCount: 0 };
+  }
   function blank() {
     const skills = {};
-    for (const s of SKILLS) skills[s] = { seen: 0, hints: 0, mistakes: 0, reports: 0, missed: 0 };
+    for (const s of SKILLS) skills[s] = blankSkill();
     return { events: [], skills, updatedAt: 0 };
   }
 
   function skillFor(conceptId) { return CONCEPT_SKILL[conceptId] || "Business Logic"; }
 
   /**
-   * Record a learning event.
-   * type: concept-encountered | hint-requested | mistake | report-written |
-   *       interview-missed
+   * Record a learning event. Competence is EARNED — only completed reps and
+   * interview answers move a skill up; mere page views (seen) never do.
+   *   concept-encountered            → exposure only (no competence)
+   *   rep-completed {correct:bool}   → a real attempt at a lab/exercise
+   *   hint-requested                 → needed help
+   *   interview {score:0..100}       → self-rated interview answer
+   *   report-written                 → wrote up a finding
    */
   async function record(ev) {
     const mem = await _get();
     const skill = ev.skill || skillFor(ev.conceptId);
-    if (!mem.skills[skill]) mem.skills[skill] = { seen: 0, hints: 0, mistakes: 0, reports: 0, missed: 0 };
+    if (!mem.skills[skill]) mem.skills[skill] = blankSkill();
     const s = mem.skills[skill];
     if (ev.type === "concept-encountered") s.seen++;
+    else if (ev.type === "rep-completed") { s.reps++; if (ev.correct) s.correct++; }
     else if (ev.type === "hint-requested") s.hints++;
-    else if (ev.type === "mistake") s.mistakes++;
     else if (ev.type === "report-written") s.reports++;
-    else if (ev.type === "interview-missed") s.missed++;
+    else if (ev.type === "interview") { s.iSum += Math.max(0, Math.min(100, ev.score || 0)); s.iCount++; }
+    // Back-compat: a bare "mistake" is a failed rep.
+    else if (ev.type === "mistake") { s.reps++; }
+    else if (ev.type === "interview-missed") { s.iSum += 40; s.iCount++; }
     mem.events.unshift({ type: ev.type, skill, conceptId: ev.conceptId || null, note: ev.note || "", ts: Date.now() });
     if (mem.events.length > 500) mem.events.length = 500;
     return _set(mem);
   }
 
-  // Lower score = weaker. Struggle signals (hints/mistakes/missed) pull it down;
-  // exposure (seen) and reports pull it up.
-  function scoreOf(s) {
-    const struggle = s.hints + s.mistakes * 2 + s.missed * 2;
-    const strength = s.seen + s.reports * 2;
-    return strength - struggle;
+  function metrics(s) {
+    const accuracy = s.reps ? s.correct / s.reps : null;
+    const interview = s.iCount ? Math.round(s.iSum / s.iCount) : null;
+    return { accuracy, interview };
   }
+
+  // Levels are gated on EARNED reps + accuracy. Nothing is "Solid" without at
+  // least 3 completed reps at >=80% accuracy and few hints.
   function levelOf(s) {
-    if (s.seen + s.hints + s.mistakes === 0) return "New";
-    const sc = scoreOf(s);
-    if (sc <= -3) return "Weak";
-    if (sc < 2) return "Practicing";
-    return "Solid";
+    const { accuracy, interview } = metrics(s);
+    if (s.reps === 0) return "New";
+    if (accuracy !== null && accuracy < 0.5) return "Struggling";
+    if (s.reps < 3) return "Learning";
+    const cleanHints = s.hints <= Math.ceil(s.reps * 0.5);
+    if (accuracy >= 0.8 && cleanHints && (interview === null || interview >= 60)) return "Solid";
+    return "Practicing";
+  }
+  // For sorting weakest-first; untouched skills sink below practised-but-weak.
+  function orderScore(s) {
+    if (s.reps === 0) return 2; // untouched — not "weak", just unstarted
+    const { accuracy } = metrics(s);
+    return (accuracy || 0) - Math.min(1, s.hints / (s.reps * 2 || 1));
   }
 
   async function profile() {
     const mem = await _get();
     const rows = Object.keys(mem.skills).map((name) => {
       const s = mem.skills[name];
-      return { skill: name, ...s, score: scoreOf(s), level: levelOf(s) };
+      const m = metrics(s);
+      return {
+        skill: name, seen: s.seen, reps: s.reps, correct: s.correct, hints: s.hints,
+        reports: s.reports, accuracy: m.accuracy, interview: m.interview,
+        level: levelOf(s), order: orderScore(s),
+      };
     });
-    rows.sort((a, b) => a.score - b.score || b.hints - a.hints);
+    rows.sort((a, b) => a.order - b.order || b.hints - a.hints);
     return { rows, events: mem.events.slice(0, 30), updatedAt: mem.updatedAt };
   }
 
-  /** Recommend reps for the weakest, actually-touched skills. */
+  /** Recommend reps for the weakest, actually-PRACTISED skills. */
   async function recommend(limit) {
     const { rows } = await profile();
-    const touched = rows.filter((r) => r.seen + r.hints + r.mistakes + r.missed > 0);
-    const weak = (touched.length ? touched : rows).filter((r) => r.level !== "Solid").slice(0, limit || 3);
-    return weak.map((r) => ({
+    const touched = rows.filter((r) => r.reps > 0 || r.hints > 0);
+    let pool = touched.filter((r) => r.level !== "Solid");
+    if (!pool.length) pool = touched.length ? [] : rows.filter((r) => /Authentication|Authorization/.test(r.skill));
+    return pool.slice(0, limit || 3).map((r) => ({
       skill: r.skill,
       level: r.level,
       why: whyStruggle(r),
@@ -174,11 +199,12 @@
   }
 
   function whyStruggle(r) {
-    if (r.mistakes >= 2) return `You've made ${r.mistakes} mistakes here — the pattern isn't automatic yet.`;
-    if (r.hints >= 2) return `You've needed ${r.hints} hints — you can get there, but not unaided yet.`;
-    if (r.missed >= 1) return `You've missed ${r.missed} interview-style answer(s) — you can do it, not explain it.`;
-    if (r.seen === 0) return "You haven't practiced this family yet.";
-    return "Light exposure so far — needs reps to stick.";
+    if (r.reps === 0 && r.hints > 0) return `You've asked for hints here but not completed a rep yet — go earn one.`;
+    if (r.accuracy !== null && r.accuracy < 0.5) return `You're ${Math.round(r.accuracy * 100)}% across ${r.reps} rep(s) — the pattern isn't clicking yet.`;
+    if (r.hints >= 3) return `You've needed ${r.hints} hints — you can get there, but not unaided yet.`;
+    if (r.interview !== null && r.interview < 60) return `Your interview answers here average ${r.interview}% — you can do it, not yet explain it.`;
+    if (r.reps < 3) return `Only ${r.reps} rep(s) so far — needs more reps to stick.`;
+    return "Close — a couple more clean reps and this is solid.";
   }
   function prereqFor(skill) {
     const map = {
