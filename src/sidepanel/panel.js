@@ -28,8 +28,12 @@ const $ = (s) => document.querySelector(s);
 const el = {
   siteBadge: $("#siteBadge"), personaRow: $("#personaRow"), personaIntro: $("#personaIntro"),
   tabs: $("#tabs"), output: $("#output"), aiBtn: $("#aiBtn"), statusMsg: $("#statusMsg"),
-  refreshBtn: $("#refreshBtn"),
+  settingsBtn: $("#settingsBtn"),
 };
+
+// Panels whose content depends on the current page — auto re-render on nav.
+const PAGE_MODES = ["tldr", "lens", "elements", "highlight"];
+let rescanTimer = null;
 
 init();
 
@@ -55,11 +59,44 @@ function bindUI() {
   el.tabs.addEventListener("click", (e) => {
     const b = e.target.closest(".tab"); if (!b) return;
     state.mode = b.dataset.mode;
+    el.settingsBtn.classList.remove("active");
     [...el.tabs.children].forEach((t) => t.classList.toggle("active", t === b));
     render();
   });
-  el.refreshBtn.addEventListener("click", async () => { await loadContext(); render(); });
+  el.settingsBtn.addEventListener("click", () => {
+    state.mode = "settings";
+    [...el.tabs.children].forEach((t) => t.classList.remove("active"));
+    el.settingsBtn.classList.add("active");
+    render();
+  });
   el.aiBtn.addEventListener("click", enrichAI);
+
+  // Auto-detect the current page: re-scan when the active tab changes or a page
+  // finishes loading — no manual refresh needed.
+  chrome.tabs.onActivated.addListener(() => scheduleRescan());
+  chrome.tabs.onUpdated.addListener((_id, info, tab) => {
+    if (tab && tab.active && (info.status === "complete" || info.url)) scheduleRescan();
+  });
+  if (chrome.windows && chrome.windows.onFocusChanged) {
+    chrome.windows.onFocusChanged.addListener((wid) => { if (wid !== chrome.windows.WINDOW_ID_NONE) scheduleRescan(); });
+  }
+}
+
+function scheduleRescan() {
+  clearTimeout(rescanTimer);
+  rescanTimer = setTimeout(autoRescan, 300);
+}
+
+async function autoRescan() {
+  const prevUrl = state.raw && state.raw.url;
+  await loadContext();
+  const newUrl = state.raw && state.raw.url;
+  if (newUrl === prevUrl) return; // same page — nothing to redraw
+  // Page changed: reset page-scoped scratch so panels reflect the new page.
+  state.hl = { conceptId: null, level: state.hl.level, summary: null, plan: null };
+  state.lensConceptId = null;
+  // Only redraw page-dependent panels; don't clobber typing in Traffic/Ask/etc.
+  if (PAGE_MODES.includes(state.mode)) render();
 }
 
 function markPersona() {
@@ -92,7 +129,7 @@ function render() {
   el.aiBtn.classList.toggle("hidden", !(state.llmEnabled && (state.mode === "tldr" || state.mode === "traffic")));
   const need = ["tldr", "lens", "elements", "highlight"];
   if (need.includes(state.mode) && !state.clean) {
-    el.output.innerHTML = `<div class="card"><p class="muted">Open a learning page (PortSwigger, HTB, Juice Shop, DVWA…) and hit ⟳. I can't read browser-internal pages.</p></div>`;
+    el.output.innerHTML = `<div class="card"><p class="muted">Open a learning page (PortSwigger, HTB, Juice Shop, DVWA…) — I detect it automatically. I can't read browser-internal pages.</p></div>`;
     return;
   }
   ({ tldr: renderTLDR, lens: renderLens, elements: renderElements, traffic: renderTraffic,

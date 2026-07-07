@@ -35,7 +35,9 @@ The optional **companion proxy** and **AI backend** are separate opt-ins (below)
 
 ## The side panel (primary UI)
 
-Clicking the toolbar icon opens a side panel with these tabs:
+Clicking the toolbar icon opens a side panel. It **auto-detects the current page** —
+switch tabs or navigate and it re-scans on its own, no refresh needed. **Settings** is the
+**⚙ gear at the top-right** of the panel. The tabs:
 
 | Panel | What it does |
 |---|---|
@@ -48,7 +50,7 @@ Clicking the toolbar icon opens a side panel with these tabs:
 | **Reps** | Recommended practice for your weak areas. |
 | **Ask** | Ask Coach — a Socratic chat that guides, explains pasted snippets, and never spoils. |
 | **Proxy** | Toggle the browser proxy and drive the companion (see below). |
-| **Settings** | Persona, context toggles, companion URL, links to AI options. |
+| **⚙ Settings** (gear, top-right) | Persona, context toggles, companion URL, links to AI options. |
 
 ### Traffic — import & understand HTTP
 Three ways to get traffic, all explained through the Assessment Lens:
