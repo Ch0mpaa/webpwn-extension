@@ -56,6 +56,8 @@ function json(res, code, obj) {
     "access-control-allow-origin": "*",
     "access-control-allow-methods": "GET,POST,DELETE,OPTIONS",
     "access-control-allow-headers": "content-type",
+    // Chrome Private Network Access: allow a public/extension page to reach loopback.
+    "access-control-allow-private-network": "true",
   });
   res.end(JSON.stringify(obj));
 }

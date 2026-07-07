@@ -338,8 +338,8 @@ async function pollCompanion() {
     state.traffic.companion = data.items || [];
     if (st) st.innerHTML = `<span class="ok-line">● bridge connected</span> — ${state.traffic.companion.length} request(s) received from Burp/Caido`;
     if (state.traffic.companion.length !== prev || !document.querySelector("#tList .titem")) renderCompanionList();
-  } catch (_) {
-    if (st) st.innerHTML = `<span class="bad-line">● bridge not running.</span> Start it: <span class="mono">node companion/bridge.js</span>, then send a request from Burp/Caido.`;
+  } catch (e) {
+    if (st) st.innerHTML = `<span class="bad-line">● can't reach bridge at ${esc(bridgeBase())}</span> (${esc(e.message || "fetch failed")}). Start it: <span class="mono">node companion/bridge.js</span>, and check the port matches Settings → Traffic bridge URL.`;
   }
 }
 
