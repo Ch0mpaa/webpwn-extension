@@ -108,7 +108,21 @@ class CoachPanel extends JPanel {
         return p;
     }
     private JLabel title(String t) { JLabel l = new JLabel(t); l.setFont(l.getFont().deriveFont(Font.BOLD, 15f)); l.setAlignmentX(Component.LEFT_ALIGNMENT); return l; }
-    private JLabel hint(String t) { JLabel l = new JLabel("<html><div style='width:520px;color:#888'>" + t + "</div></html>"); l.setAlignmentX(Component.LEFT_ALIGNMENT); return l; }
+    // Burp's look-and-feel disables HTML in JLabels, so use a wrapped text area.
+    private Component hint(String t) {
+        javax.swing.JTextArea a = new javax.swing.JTextArea(t);
+        a.setEditable(false);
+        a.setFocusable(false);
+        a.setOpaque(false);
+        a.setLineWrap(true);
+        a.setWrapStyleWord(true);
+        a.setBorder(null);
+        a.setFont(new JLabel().getFont());
+        a.setForeground(new java.awt.Color(0x88, 0x88, 0x88));
+        a.setAlignmentX(Component.LEFT_ALIGNMENT);
+        a.setMaximumSize(new Dimension(560, 60));
+        return a;
+    }
     private Component gap(int h) { return Box.createVerticalStrut(h); }
 
     /** A left-aligned FlowLayout row that plays nicely in a BoxLayout column. */
