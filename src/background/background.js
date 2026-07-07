@@ -184,8 +184,16 @@ function buildUserPrompt(msg) {
 }
 
 function modeInstruction(mode, msg) {
+  if (mode === "help") {
+    return `The learner is looking at this page and said: "${msg.question || ""}".\n` +
+      `They may be confused or lost. Read the FULL VISIBLE PAGE TEXT above and answer THEM directly:\n` +
+      `- Explain what they're asking about clearly and simply, using THIS page's actual content.\n` +
+      `- Explaining a concept IS teaching — do it fully and plainly. Only withhold a ready-to-paste lab solution or exploit payload (nudge toward it instead).\n` +
+      `- Be warm and concise. Short paragraphs or a few bullets. No rigid section headers, no dumping the whole methodology.\n` +
+      `- End with ONE short question to check they followed, or to ask what else is unclear.`;
+  }
   if (mode === "chat") {
-    return `The learner asks: "${msg.question || ""}". Respond as a mentor — guide with questions and mental models, do not hand over the answer or a payload unless they explicitly ask for a strong hint.`;
+    return `The learner asks: "${msg.question || ""}". Answer directly and helpfully using the page context; explain concepts fully, only withhold ready-to-use exploit payloads. Keep it short and warm. End with one quick check-in question.`;
   }
   if (mode === "concept") {
     return `Explain the concept "${msg.phrase || ""}" as a mentor: simple explanation, real-world example, how to identify, what to test, common mistakes, a mental model, and 2-3 coaching questions. No spoilers.`;

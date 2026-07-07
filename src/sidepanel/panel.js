@@ -8,7 +8,7 @@ const WPC = globalThis.WPC;
 
 const state = {
   persona: "atlas",
-  mode: "tldr",
+  mode: "ask",
   raw: null,
   clean: null,
   storage: null,
@@ -655,41 +655,56 @@ async function renderReps() {
     <ul>${r.reps.map((x) => `<li><span class="tag">${esc(x.platform)}</span> ${esc(x.label)}</li>`).join("")}</ul>`)).join("");
 }
 
-// ---- Ask Coach --------------------------------------------------------------
+// ---- Coach (the default) — "here's what I see, what do you need?" -----------
+
+function pageOneLiner() {
+  const c = state.clean;
+  if (!c || !(c.title || (c.headers && c.headers.length) || c.fullText)) {
+    return "I can't read this page — open a lesson/lab and I'll take a look.";
+  }
+  let topic = (c.title || "").replace(/\s*[|\-–—].*$/, "").trim();
+  if (!topic || topic.length < 3) topic = (c.headers && c.headers[0] && c.headers[0].text) || "this page";
+  const where = state.site && state.site.label && state.site.id !== "generic" ? " on " + state.site.label : "";
+  return `I can see you're on **${topic}**${where}.`;
+}
 
 function renderAsk() {
+  el.personaIntro.textContent = "";
   const msgs = state.chat.map((m) => m.role === "user"
     ? `<div class="msg user">${esc(m.text)}</div>`
     : `<div class="msg coach">${renderMarkdown(m.text)}</div>`).join("");
+  const opener = `${pageOneLiner()}\n\n**What are you stuck on?** Tell me in your own words — "I'm lost in X", "what does this mean?", or paste a request / JWT / code — and I'll explain it.`;
   el.output.innerHTML = `
-    <div class="card"><h3>Ask Coach</h3><p class="muted small">I guide with questions, not answers. Paste a snippet and I'll explain it. Ask for a "strong hint" only if you really want the next action.</p></div>
-    <div class="chat" id="chat">${msgs || `<div class="msg coach"><pre>What are you looking at? Describe the page, or paste a request/JWT/JSON/SQL and I'll help you think.</pre></div>`}</div>
-    <div class="chat-in"><textarea id="askIn" placeholder="Ask or paste…"></textarea><button id="askGo" class="btn primary">Send</button></div>`;
+    <div class="chat" id="chat">${msgs || `<div class="msg coach">${renderMarkdown(opener)}</div>`}</div>
+    <div class="chat-in"><textarea id="askIn" placeholder="What do you need help with?"></textarea><button id="askGo" class="btn primary">Send</button></div>
+    ${state.chat.length ? `<div class="row" style="margin-top:6px"><button id="askClear" class="btn ghost-btn">New question</button></div>` : ""}`;
   const go = $("#askGo"), input = $("#askIn");
   const send = () => askSend(input.value);
   go.addEventListener("click", send);
-  input.addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) send(); });
+  input.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } });
+  const clr = $("#askClear"); if (clr) clr.addEventListener("click", () => { state.chat = []; renderAsk(); });
   const chat = $("#chat"); if (chat) chat.scrollTop = chat.scrollHeight;
+  input.focus();
 }
 
 async function askSend(text) {
   text = (text || "").trim(); if (!text) return;
+  const input = $("#askIn"); if (input) input.value = "";
   state.chat.push({ role: "user", text });
-  const reply = coachReply(text);
-  state.chat.push({ role: "coach", text: reply });
-  renderAsk();
   if (state.llmEnabled) {
-    state.chat.push({ role: "coach", text: "✦ (asking AI mentor…)" });
+    state.chat.push({ role: "coach", text: "_…thinking…_" });
     renderAsk();
     try {
       const resp = await chrome.runtime.sendMessage(Object.assign(
-        { type: "WPC_LLM", mode: "chat", question: text, context: state.clean || {} },
+        { type: "WPC_LLM", mode: "help", question: text, context: state.clean || {} },
         await llmMeta()));
       state.chat.pop();
-      state.chat.push({ role: "coach", text: resp && resp.ok ? "✦ " + cleanAI(resp.text) : "✦ AI unavailable: " + ((resp && resp.error) || "error") });
-    } catch (e) { state.chat.pop(); state.chat.push({ role: "coach", text: "✦ AI error: " + e.message }); }
-    renderAsk();
+      state.chat.push({ role: "coach", text: resp && resp.ok ? cleanAI(resp.text) : "AI unavailable: " + ((resp && resp.error) || "error") });
+    } catch (e) { state.chat.pop(); state.chat.push({ role: "coach", text: "AI error: " + e.message }); }
+  } else {
+    state.chat.push({ role: "coach", text: coachReply(text) + "\n\n_(Turn on the AI backend in ⚙ Settings so I can explain things in full, not just point.)_" });
   }
+  renderAsk();
 }
 
 function coachReply(text) {
