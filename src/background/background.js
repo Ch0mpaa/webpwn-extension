@@ -100,10 +100,10 @@ async function handleLLM(msg) {
   cfg.model = pickModel(cfg, provider, msg.mode);
 
   const system = systemFor(msg.persona || "atlas");
-  const userPrompt = buildUserPrompt(msg);
+  const messages = buildMessages(msg);
 
-  if (provider === "anthropic") return callAnthropic(cfg, userPrompt, system);
-  return callOpenAICompatible(cfg, userPrompt, provider, system);
+  if (provider === "anthropic") return callAnthropic(cfg, messages, system);
+  return callOpenAICompatible(cfg, messages, provider, system);
 }
 
 function pickModel(cfg, provider, mode) {
@@ -116,8 +116,45 @@ function pickModel(cfg, provider, mode) {
   return coach || def || summarize || undefined;
 }
 
-function buildUserPrompt(msg) {
-  const mode = msg.mode || "tldr";
+// Build the full chat transcript sent to the model. The FIRST user turn is the
+// page context (what I'm looking at); the coach acknowledges it; then the real
+// conversation follows. Multi-turn callers (the Coach chat) pass `msg.history`
+// so follow-ups — e.g. grading a quiz answer — remember the earlier turns.
+// Single-shot callers (Brief / Traffic) pass no history and we append the
+// mode-specific instruction as the final user turn.
+function buildMessages(msg) {
+  const messages = [
+    { role: "user", content: pageContextBlock(msg) },
+    { role: "assistant", content: "Got it — I've read this page and I'm ready. What do you need?" },
+  ];
+  const history = Array.isArray(msg.history) ? msg.history.slice(-10) : [];
+  if (history.length) {
+    for (const h of history) {
+      const role = (h.role === "assistant" || h.role === "coach") ? "assistant" : "user";
+      const content = String(h.content || h.text || "").slice(0, 6000);
+      if (content) messages.push({ role, content });
+    }
+    // The model must answer, so the transcript has to end on a user turn.
+    if (messages[messages.length - 1].role !== "user") {
+      messages.push({ role: "user", content: modeInstruction(msg.mode || "chat", msg) });
+    }
+  } else {
+    messages.push({ role: "user", content: modeInstruction(msg.mode || "tldr", msg) });
+  }
+  // Collapse consecutive same-role turns — Anthropic requires strict user/assistant
+  // alternation, and a coach-only chat entry before a quick action can produce two
+  // assistant turns in a row.
+  const merged = [];
+  for (const m of messages) {
+    const last = merged[merged.length - 1];
+    if (last && last.role === m.role) last.content += "\n\n" + m.content;
+    else merged.push({ role: m.role, content: m.content });
+  }
+  return merged;
+}
+
+// The page-context turn: full visible text + structured extract + signals.
+function pageContextBlock(msg) {
   const ctx = msg.context || {};
   const lab = msg.lab || (ctx && ctx.lab) || null;
   const signals = [];
@@ -128,8 +165,7 @@ function buildUserPrompt(msg) {
   if (msg.selection) signals.push(`I HIGHLIGHTED: "${String(msg.selection).slice(0, 400)}".`);
 
   const fullText = String(ctx.fullText || "").slice(0, 12000);
-  const lines = [
-    `MODE: ${mode.toUpperCase()}`,
+  return [
     `PLATFORM: ${msg.siteLabel || "unknown"}`,
     "",
     "PAGE SIGNALS:",
@@ -145,9 +181,8 @@ function buildUserPrompt(msg) {
     JSON.stringify(trimCtx(ctx), null, 1).slice(0, 4000),
     "```",
     "",
-    modeInstruction(mode, msg),
-  ];
-  return lines.join("\n");
+    "That's what's on my screen. Read it, then help with what I ask next.",
+  ].join("\n");
 }
 
 function modeInstruction(mode, msg) {
@@ -163,6 +198,12 @@ function modeInstruction(mode, msg) {
   }
   if (mode === "concept") {
     return `Explain "${msg.phrase || ""}" simply, in the context of this page: what it means and why it matters, in a few lines. Then "Right now you can: 1)… 2)… 3)…" (what to look at / do). No fluff, no methodology, no exploit payloads.`;
+  }
+  if (mode === "concepts") {
+    return `Explain the CORE CONCEPTS of THIS page/section simply — each key idea in one or two short bullets: what it means and why it matters. Plain English, high signal, no fluff, no methodology.`;
+  }
+  if (mode === "quiz") {
+    return `Give me ONE multiple-choice question (options A, B, C, D) that tests the key content of THIS page/section. Show only the question and the four options — do NOT reveal or hint at the correct answer yet. End by asking: "What's your answer? (A, B, C or D)".`;
   }
   // Default = the fast TL;DR.
   return `Give me a fast TL;DR of THIS page as up to 10 short bullet points — ONLY the key ideas that actually matter, no fluff, no methodology, no assessment lens. One line per bullet, plain English. Finish with a single line: "**Bottom line:** …". I want to digest it in ~30 seconds and move on.`;
@@ -180,7 +221,7 @@ function trimCtx(ctx) {
   };
 }
 
-async function callAnthropic(cfg, userPrompt, system) {
+async function callAnthropic(cfg, messages, system) {
   const res = await fetch((cfg.baseUrl || "https://api.anthropic.com") + "/v1/messages", {
     method: "POST",
     headers: {
@@ -193,7 +234,7 @@ async function callAnthropic(cfg, userPrompt, system) {
       model: cfg.model || "claude-sonnet-5",
       max_tokens: 1400,
       system: system,
-      messages: [{ role: "user", content: userPrompt }],
+      messages: messages,
     }),
   });
   const data = await res.json();
@@ -202,7 +243,7 @@ async function callAnthropic(cfg, userPrompt, system) {
   return { ok: true, text };
 }
 
-async function callOpenAICompatible(cfg, userPrompt, provider, system) {
+async function callOpenAICompatible(cfg, messages, provider, system) {
   const isOR = provider === "openrouter";
   const base = cfg.baseUrl || (isOR ? "https://openrouter.ai/api/v1" : "https://api.openai.com/v1");
   const model = cfg.model || (isOR ? "anthropic/claude-3.5-sonnet" : "gpt-4o-mini");
@@ -221,10 +262,7 @@ async function callOpenAICompatible(cfg, userPrompt, provider, system) {
       body: JSON.stringify({
         model,
         max_tokens: 1400,
-        messages: [
-          { role: "system", content: system },
-          { role: "user", content: userPrompt },
-        ],
+        messages: [{ role: "system", content: system }, ...messages],
       }),
     });
     data = await res.json();

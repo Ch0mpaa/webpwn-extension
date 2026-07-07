@@ -23,6 +23,25 @@ const state = {
   lensConceptId: null,
   traffic: { parsed: null, artifact: null, companion: [], selected: null },
   chat: [],
+  quizPending: false, // coach asked an MCQ; the next user turn is the answer to grade
+  gradeNext: false,   // the pending user turn is a quiz answer → grade the coach's reply
+};
+
+// HTB-Coach-style quick actions. `send` is the instruction actually sent to the
+// AI; the user sees the friendly `label` in the chat instead.
+const COACH_ACTIONS = {
+  summary: {
+    label: "📄 Make a summary of this section", mode: "tldr",
+    send: 'Give me a fast TL;DR of THIS section as up to 10 short bullet points — only the key ideas that actually matter, no fluff. One line per bullet, plain English. Finish with a single line: "**Bottom line:** …".',
+  },
+  concepts: {
+    label: "💡 Explain core concepts of this section", mode: "concepts",
+    send: "Explain the CORE CONCEPTS of this section simply — each key idea in one or two short bullets: what it means and why it matters. Plain English, no fluff, no methodology.",
+  },
+  quiz: {
+    label: "🎯 Play a quiz", mode: "quiz", quiz: true,
+    send: 'Give me ONE multiple-choice question (options A, B, C, D) that tests the key content of THIS section. Show only the question and the four options — do NOT reveal or hint at the correct answer yet. End by asking: "What\'s your answer? (A, B, C or D)".',
+  },
 };
 
 const $ = (s) => document.querySelector(s);
@@ -677,41 +696,34 @@ function renderAsk() {
   const msgs = state.chat.map((m) => m.role === "user"
     ? `<div class="msg user">${esc(m.text)}</div>`
     : `<div class="msg coach">${renderMarkdown(m.text)}</div>`).join("");
-  const opener = `${pageOneLiner()}\n\n**What are you stuck on?** Tell me in your own words — "I'm lost in X", "what does this mean?", or paste a request / JWT / code — and I'll explain it and tell you what to do.`;
-  const toolbar = state.llmEnabled
-    ? `<div class="row" style="margin-bottom:8px">
-         <button id="coachTldr" class="btn primary">📄 TL;DR this page (10 pts)</button>
-         <button id="coachSel" class="btn">Explain what I highlighted</button>
+  // HTB-Coach-style greeting shown only before the conversation starts.
+  const greeting = `Hello, I'm your AI-powered learning partner. ${pageOneLiner()}\n\n**What can I help you with today?**`;
+  const quick = state.llmEnabled
+    ? `<div class="quick" id="quick">
+         ${Object.keys(COACH_ACTIONS).map((k) => `<button class="quickbtn" data-act="${k}">${esc(COACH_ACTIONS[k].label)}</button>`).join("")}
+         <button class="quickbtn" data-act="selection">🖍 Explain what I highlighted</button>
        </div>`
-    : `<div class="warn">Turn on the AI backend (⚙ Settings → Open options) so I can summarize and explain. Without it I can only point you at concepts.</div>`;
+    : `<div class="warn">Turn on the AI backend (⚙ Settings → Open options) so I can summarize, explain and quiz you. Without it I can only point you at concepts.</div>`;
   el.output.innerHTML = `
-    ${toolbar}
-    <div class="chat" id="chat">${msgs || `<div class="msg coach">${renderMarkdown(opener)}</div>`}</div>
-    <div class="chat-in"><textarea id="askIn" placeholder="What do you need help with?"></textarea><button id="askGo" class="btn primary">Send</button></div>
-    ${state.chat.length ? `<div class="row" style="margin-top:6px"><button id="askClear" class="btn ghost-btn">New question</button></div>` : ""}`;
+    <div class="chat" id="chat">${msgs || `<div class="msg coach">${renderMarkdown(greeting)}</div>`}</div>
+    ${quick}
+    <div class="chat-in"><textarea id="askIn" placeholder="Ask ATLAS…"></textarea><button id="askGo" class="btn primary">Send</button></div>
+    ${state.chat.length ? `<div class="row" style="margin-top:6px"><button id="askClear" class="btn">New chat</button></div>` : ""}`;
   const go = $("#askGo"), input = $("#askIn");
   const send = () => askSend(input.value);
   go.addEventListener("click", send);
   input.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } });
-  const clr = $("#askClear"); if (clr) clr.addEventListener("click", () => { state.chat = []; renderAsk(); });
-  const t = $("#coachTldr"); if (t) t.addEventListener("click", () => coachRun("tldr", "TL;DR this page"));
-  const cs = $("#coachSel"); if (cs) cs.addEventListener("click", coachExplainSelection);
+  const clr = $("#askClear"); if (clr) clr.addEventListener("click", () => { state.chat = []; state.quizPending = false; state.gradeNext = false; renderAsk(); });
+  el.output.querySelectorAll(".quickbtn").forEach((b) => b.addEventListener("click", () => coachAction(b.dataset.act)));
   const chat = $("#chat"); if (chat) chat.scrollTop = chat.scrollHeight;
   if (input) input.focus();
 }
 
-// Run an AI request and drop the answer straight into the Coach chat.
-async function coachRun(mode, userLabel, extra) {
-  state.chat.push({ role: "user", text: userLabel });
-  state.chat.push({ role: "coach", text: "_…reading the page…_" });
-  renderAsk();
-  try {
-    const resp = await chrome.runtime.sendMessage(Object.assign(
-      { type: "WPC_LLM", mode, context: state.clean || {} }, extra || {}, await llmMeta()));
-    state.chat.pop();
-    state.chat.push({ role: "coach", text: resp && resp.ok ? cleanAI(resp.text) : "AI unavailable: " + ((resp && resp.error) || "error") });
-  } catch (e) { state.chat.pop(); state.chat.push({ role: "coach", text: "AI error: " + e.message }); }
-  renderAsk();
+// A quick-action button (summary / concepts / quiz / selection).
+async function coachAction(kind) {
+  if (kind === "selection") return coachExplainSelection();
+  const a = COACH_ACTIONS[kind]; if (!a) return;
+  await callAI({ display: a.label, send: a.send, mode: a.mode, quiz: a.quiz });
 }
 
 async function coachExplainSelection() {
@@ -722,27 +734,68 @@ async function coachExplainSelection() {
     state.chat.push({ role: "coach", text: "Highlight some text on the page first, then click **Explain what I highlighted**." });
     return renderAsk();
   }
-  coachRun("concept", `Explain: "${text.slice(0, 80)}${text.length > 80 ? "…" : ""}"`, { phrase: text });
+  await callAI({
+    display: `Explain: "${text.slice(0, 80)}${text.length > 80 ? "…" : ""}"`,
+    send: `Explain this, in the context of this page, simply: "${text.slice(0, 400)}". What it means, why it matters, then "Right now you can: 1)… 2)… 3)…".`,
+    mode: "concept", selection: text,
+  });
 }
 
+// The user typed a free-form message. If a quiz is awaiting an answer, this turn
+// is that answer — flag it so we grade the coach's reply into memory.
 async function askSend(text) {
   text = (text || "").trim(); if (!text) return;
   const input = $("#askIn"); if (input) input.value = "";
-  state.chat.push({ role: "user", text });
+  if (state.quizPending) { state.quizPending = false; state.gradeNext = true; }
   if (state.llmEnabled) {
-    state.chat.push({ role: "coach", text: "_…thinking…_" });
-    renderAsk();
-    try {
-      const resp = await chrome.runtime.sendMessage(Object.assign(
-        { type: "WPC_LLM", mode: "help", question: text, context: state.clean || {} },
-        await llmMeta()));
-      state.chat.pop();
-      state.chat.push({ role: "coach", text: resp && resp.ok ? cleanAI(resp.text) : "AI unavailable: " + ((resp && resp.error) || "error") });
-    } catch (e) { state.chat.pop(); state.chat.push({ role: "coach", text: "AI error: " + e.message }); }
+    await callAI({ display: text, send: text, mode: "help" });
   } else {
+    state.chat.push({ role: "user", text });
     state.chat.push({ role: "coach", text: coachReply(text) + "\n\n_(Turn on the AI backend in ⚙ Settings so I can explain things in full, not just point.)_" });
+    renderAsk();
   }
+}
+
+// Core multi-turn call: append the user turn, stream the coach's reply, and send
+// the whole chat history so follow-ups (like grading a quiz answer) keep context.
+async function callAI({ display, send, mode, quiz, selection }) {
+  if (!state.llmEnabled) return;
+  state.chat.push({ role: "user", text: display, send: send || display });
+  state.chat.push({ role: "coach", text: "_…thinking…_", pending: true });
+  if (quiz) state.quizPending = true;
   renderAsk();
+  // Everything except the in-flight placeholder becomes the transcript. `send`
+  // (the instruction) is what the model sees; the friendly label stays in the UI.
+  const history = state.chat.filter((m) => !m.pending).map((m) => ({
+    role: m.role === "user" ? "user" : "assistant",
+    content: m.send || m.text,
+  }));
+  try {
+    const extra = selection ? { selection } : {};
+    const resp = await chrome.runtime.sendMessage(Object.assign(
+      { type: "WPC_LLM", mode, context: state.clean || {}, history }, extra, await llmMeta()));
+    state.chat.pop();
+    const text = resp && resp.ok ? cleanAI(resp.text) : "AI unavailable: " + ((resp && resp.error) || "error");
+    state.chat.push({ role: "coach", text });
+    if (state.gradeNext) { state.gradeNext = false; gradeQuizMemory(text); }
+  } catch (e) { state.chat.pop(); state.chat.push({ role: "coach", text: "AI error: " + e.message }); }
+  renderAsk();
+}
+
+// Grade a quiz answer into earned memory. We read the coach's verdict text — a
+// completed rep either way (attempting is the rep); correctness sets accuracy.
+function gradeQuizMemory(replyText) {
+  const t = String(replyText || "").toLowerCase();
+  const right = /\b(correct|that's right|thats right|well done|exactly|nailed it|spot on|you (?:got|nailed) it|good job)\b/.test(t);
+  const wrong = /\b(incorrect|not quite|not right|that's wrong|thats wrong|wrong answer|actually,? the|the correct answer|close,? but)\b/.test(t);
+  if (!right && !wrong) return; // couldn't read a verdict — don't fabricate a result
+  let conceptId = null;
+  try {
+    const f = WPC.detectConceptsForContext(state.clean || {}, 1);
+    conceptId = f[0] ? f[0].concept.id : null;
+  } catch (_) {}
+  WPC.memory.record({ type: "rep-completed", correct: right && !wrong, conceptId: conceptId || undefined });
+  el.statusMsg.textContent = right ? "Quiz: correct — rep logged." : "Quiz: missed — rep logged.";
 }
 
 function coachReply(text) {
