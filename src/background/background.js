@@ -108,17 +108,26 @@ async function handleLLM(msg) {
     "llmEnabled", "provider", "apiKey", "model", "baseUrl", "modelSummarize", "modelCoach",
   ]);
   if (!cfg.llmEnabled) return { ok: false, error: "LLM backend disabled in options." };
-  if (!cfg.apiKey) return { ok: false, error: "No API key set in options." };
 
   // Auto-detect the provider from the key/base URL so a mismatched dropdown
   // can't misroute (e.g. an OpenRouter key sent to Anthropic → "invalid x-api-key").
-  const key = String(cfg.apiKey).trim();
-  let provider = cfg.provider || "openrouter";
-  if (/^sk-or-/i.test(key) || /openrouter\.ai/i.test(cfg.baseUrl || "")) provider = "openrouter";
-  else if (/^sk-ant-/i.test(key) || /api\.anthropic\.com/i.test(cfg.baseUrl || "")) provider = "anthropic";
-  // Drop a base URL left over from a different provider so it doesn't misroute.
-  if (provider === "openrouter" && /anthropic/i.test(cfg.baseUrl || "")) cfg.baseUrl = "";
-  if (provider === "anthropic" && /openrouter/i.test(cfg.baseUrl || "")) cfg.baseUrl = "";
+  const key = String(cfg.apiKey || "").trim();
+  const base = String(cfg.baseUrl || "").trim();
+  // An explicit base URL is the strongest signal (so a local endpoint wins even
+  // if a leftover sk-or key is still in the field). Only fall back to key prefix
+  // when no base URL is set (the common OpenRouter case).
+  let provider;
+  if (/openrouter\.ai/i.test(base)) provider = "openrouter";
+  else if (/api\.anthropic\.com/i.test(base)) provider = "anthropic";
+  else if (base) provider = "openai"; // any other custom base = OpenAI-compatible (local models, etc.)
+  else if (/^sk-or-/i.test(key)) provider = "openrouter";
+  else if (/^sk-ant-/i.test(key)) provider = "anthropic";
+  else provider = cfg.provider || "openrouter";
+
+  // Hosted providers need a key; local/custom OpenAI-compatible servers usually don't.
+  if ((provider === "openrouter" || provider === "anthropic") && !key) {
+    return { ok: false, error: "No API key set in options." };
+  }
   // Per-task model: summaries (mode tldr) use the cheap/free model; everything
   // else (chat/concept/coach/analyze) uses the stronger coach model.
   cfg.model = pickModel(cfg, provider, msg.mode);
@@ -219,7 +228,8 @@ async function callOpenAICompatible(cfg, userPrompt, provider, system) {
   const isOR = provider === "openrouter";
   const base = cfg.baseUrl || (isOR ? "https://openrouter.ai/api/v1" : "https://api.openai.com/v1");
   const model = cfg.model || (isOR ? "anthropic/claude-3.5-sonnet" : "gpt-4o-mini");
-  const headers = { "content-type": "application/json", authorization: "Bearer " + cfg.apiKey };
+  const headers = { "content-type": "application/json" };
+  if (cfg.apiKey) headers.authorization = "Bearer " + cfg.apiKey; // local servers often need no key
   if (isOR) {
     // OpenRouter's optional attribution headers (used for its rankings page).
     headers["HTTP-Referer"] = "https://github.com/Ch0mpaa/webpwn-extension";

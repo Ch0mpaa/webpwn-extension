@@ -30,10 +30,10 @@ const PROVIDERS = {
     hint: "Anthropic direct: get a key at console.anthropic.com. Use a model id like claude-sonnet-5 or claude-opus-4-8.",
   },
   openai: {
-    key: "sk-…",
-    model: "gpt-4o-mini",
-    base: "https://api.openai.com/v1",
-    hint: "Any OpenAI-compatible endpoint. Set the Base URL to your provider and a matching model id.",
+    key: "(blank for local servers)",
+    model: "your served model id",
+    base: "http://192.168.x.x:8001/v1",
+    hint: "Any OpenAI-compatible endpoint, including LOCAL models (vLLM, LM Studio, Ollama /v1, text-generation-webui). Set Base URL to your server's /v1 URL and Default model to whatever it serves. API key can be left blank for local servers. Any base URL that isn't OpenRouter/Anthropic is treated as this. For a single local model, leave the per-task Summarize/Coach fields blank so everything uses the Default model.",
   },
 };
 
