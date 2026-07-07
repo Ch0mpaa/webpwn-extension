@@ -307,8 +307,11 @@ async function clearHighlight() {
 function renderTraffic() {
   const sel = state.traffic.selected;
   el.output.innerHTML = `
-    ${card("Live traffic", `<p class="muted small">In Burp/Caido, right-click a request → <b>Send to WebPwn Coach</b>. It appears here automatically — click one and I'll walk it. (Route Chrome through Burp first via the Proxy tab.)</p>
-      <div id="tStatus" class="small muted">checking companion…</div>
+    ${card("Live traffic", `<p class="muted small">In Burp, use the <b>WebPwn Coach</b> tab → <b>Send latest proxy request</b> (or right-click → Send to WebPwn Coach). It appears here — click one and I'll walk it.</p>
+      <div class="lab">Bridge URL (this is the coach bridge on :8088 — NOT Burp's :8080)</div>
+      <div class="row"><input id="tBridge" type="text" value="${esc(state.bridgeUrl)}" style="flex:3 1 140px"><button id="tBridge88" class="btn">Use :8088</button></div>
+      ${proxyPortWarn()}
+      <div id="tStatus" class="small muted" style="margin-top:8px">checking bridge…</div>
       <div id="tList" class="tlist" style="margin-top:8px"></div>
       <div class="row"><button id="tRefresh" class="btn">Refresh now</button><button id="tClear" class="btn red">Clear captured</button></div>`)}
     ${card("Or import manually", `<details><summary class="small muted">Paste a raw HTTP request/response, or a JWT / JSON / SQL / code snippet</summary>
@@ -320,6 +323,9 @@ function renderTraffic() {
   $("#harIn").addEventListener("change", importHar);
   $("#tRefresh").addEventListener("click", () => pollCompanion());
   $("#tClear").addEventListener("click", clearCompanion);
+  const setBridge = (url) => { state.bridgeUrl = url; chrome.storage.local.set({ bridgeUrl: url }); renderTraffic(); };
+  $("#tBridge").addEventListener("change", (e) => setBridge((e.target.value || "").trim() || state.bridgeUrl));
+  $("#tBridge88").addEventListener("click", () => setBridge("http://127.0.0.1:8088"));
   if (state.traffic.companion.length) renderCompanionList();
   if (sel) renderTrafficResult(sel);
   // Auto-poll the companion so proxied traffic streams in live.
@@ -328,6 +334,14 @@ function renderTraffic() {
 }
 
 function bridgeBase() { return state.bridgeUrl.replace(/\/$/, ""); }
+function proxyPortWarn() {
+  let port = "";
+  try { port = new URL(state.bridgeUrl).port; } catch (_) {}
+  if (["8080", "8081", "8082", "8083"].includes(port)) {
+    return `<div class="warn">⚠ Bridge URL is on port ${esc(port)} — that's your <b>proxy</b> (Burp/Caido), not the coach bridge. The bridge runs on <b>:8088</b>. Click “Use :8088”.</div>`;
+  }
+  return "";
+}
 
 async function pollCompanion() {
   const st = $("#tStatus");
